@@ -2,7 +2,7 @@ import SwiftUI
 
 @main
 struct IslandStudioApp: App {
-    @StateObject private var manager = IslandManager()
+    @StateObject private var manager = IslandManager.shared
     @Environment(\.scenePhase) private var scenePhase
 
     var body: some Scene {

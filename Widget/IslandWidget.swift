@@ -13,7 +13,7 @@ struct IslandLiveActivity: Widget {
     var body: some WidgetConfiguration {
         ActivityConfiguration(for: IslandAttributes.self) { context in
             LockScreenView(state: context.state)
-                .activityBackgroundTint(Color.black.opacity(0.85))
+                .activityBackgroundTint(context.state.lockBackground)
                 .activitySystemActionForegroundColor(.white)
         } dynamicIsland: { context in
             let s = context.state
@@ -25,17 +25,10 @@ struct IslandLiveActivity: Widget {
                     SlotView(slot: s.right, state: s, size: 34).padding(.trailing, 4)
                 }
                 DynamicIslandExpandedRegion(.center) {
-                    Text(s.expandedTitle)
-                        .font(.headline)
-                        .fontDesign(s.design)
-                        .lineLimit(1)
+                    ExpandedTitle(state: s)
                 }
                 DynamicIslandExpandedRegion(.bottom) {
-                    Text(s.expandedSubtitle)
-                        .font(.subheadline)
-                        .fontDesign(s.design)
-                        .foregroundStyle(.secondary)
-                        .lineLimit(1)
+                    ExpandedBottom(state: s)
                 }
             } compactLeading: {
                 SlotView(slot: s.left, state: s, size: 20)
@@ -46,24 +39,5 @@ struct IslandLiveActivity: Widget {
             }
             .keylineTint(Color(hex: s.keylineHex))
         }
-    }
-}
-
-struct LockScreenView: View {
-    let state: IslandState
-
-    var body: some View {
-        HStack(spacing: 12) {
-            SlotView(slot: state.left, state: state, size: 30)
-            VStack(alignment: .leading, spacing: 2) {
-                Text(state.expandedTitle).font(.headline)
-                Text(state.expandedSubtitle).font(.caption).foregroundStyle(.secondary)
-            }
-            .fontDesign(state.design)
-            Spacer()
-            SlotView(slot: state.right, state: state, size: 30)
-        }
-        .padding(16)
-        .foregroundStyle(.white)
     }
 }
