@@ -306,13 +306,14 @@ final class IslandManager: ObservableObject {
     // MARK: - Previews
 
     /// What the island looks like right now, animated, for the in-app preview.
-    func previewState(at date: Date) -> IslandState {
+    func previewState(at date: Date, music: Bool = false) -> IslandState {
         let step = max(0.5, frameInterval)
         let length = max(1, cycleLength)
         let start = Date(timeIntervalSince1970: floor(date.timeIntervalSince1970 / length) * length)
         let previewFrame = paused ? frame : Int(date.timeIntervalSince1970 / step)
         return compose(base: config, now: date, frame: previewFrame, cycleStart: start, cycleLength: length,
-                       sessionStart: isRunning ? activityStart : date, budget: false, overrides: true)
+                       sessionStart: isRunning ? activityStart : date, budget: false, overrides: true,
+                       forceMusic: music)
     }
 
     /// A still snapshot of any style, for preset tiles.
@@ -346,7 +347,8 @@ final class IslandManager: ObservableObject {
     }
 
     private func compose(base: IslandState, now: Date, frame: Int, cycleStart: Date, cycleLength: Double,
-                         sessionStart: Date, budget: Bool, overrides: Bool) -> IslandState {
+                         sessionStart: Date, budget: Bool, overrides: Bool,
+                         forceMusic: Bool = false) -> IslandState {
         var s = base
         let battery = batteryInfo()
 
@@ -364,15 +366,28 @@ final class IslandManager: ObservableObject {
         s.countdownTarget = settings.countdownTarget
         s.musicTitle = String(info.musicTitle.prefix(40))
         s.musicArtist = String(info.musicArtist.prefix(30))
-        s.musicPlaying = info.musicPlaying || musicActive
+        s.musicPlaying = info.musicPlaying || musicActive || forceMusic
+        if forceMusic && s.musicTitle.isEmpty {
+            s.musicTitle = "Song title"
+            s.musicArtist = "Artist"
+        }
+        s.expandedTitle = String(s.expandedTitle.prefix(40))
+        s.expandedSubtitle = String(s.expandedSubtitle.prefix(40))
+        if s.lockOwnText {
+            s.lockTitle = String(s.lockTitle.prefix(30))
+            s.lockSubtitle = String(s.lockSubtitle.prefix(30))
+        } else {
+            s.lockTitle = ""
+            s.lockSubtitle = ""
+        }
         s.steps = info.steps
         s.weatherTemp = info.weatherTemp
         s.weatherSymbol = info.weatherSymbol
 
         // Temporary takeovers
         if overrides {
-            if settings.musicMode == .showMusic && musicActive {
-                s.applyMusicStyle()
+            if settings.musicMode == .showMusic && (musicActive || forceMusic) {
+                applyMusicLayout(to: &s)
             } else if settings.chargingMode && battery.charging {
                 s.applyChargingStyle()
             }
@@ -383,6 +398,17 @@ final class IslandManager: ObservableObject {
         if !s.uses(.image) { s.imageData = nil }
         if budget { s.fitToBudget() }
         return s
+    }
+
+    /// The user's music layout. Each side can use their own preset's slot, and the
+    /// minimal bubble always stays whatever they chose for their preset.
+    private func applyMusicLayout(to s: inout IslandState) {
+        if !settings.musicLeftUsesMine { s.left = settings.musicLeft }
+        if !settings.musicRightUsesMine { s.right = settings.musicRight }
+        if settings.musicSongTitle && !s.musicTitle.isEmpty {
+            s.expandedTitle = s.musicTitle
+            s.expandedSubtitle = s.musicArtist
+        }
     }
 
     private func liveState(now: Date = Date()) -> IslandState {

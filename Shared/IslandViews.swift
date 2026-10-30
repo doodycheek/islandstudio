@@ -10,62 +10,73 @@ struct LockScreenView: View {
 
     private var accent: Color { state.accentColor }
 
-    private var cycleRange: ClosedRange<Date> {
-        state.cycleStart...max(state.cycleEnd, state.cycleStart.addingTimeInterval(1))
-    }
-
-    private var title: String {
-        state.bannerText.isEmpty ? state.expandedTitle : state.bannerText
-    }
-
     var body: some View {
+        switch state.lockLayout {
+        case .classic: classic
+        case .compact: compact
+        case .hero: hero
+        }
+    }
+
+    private var classic: some View {
         VStack(alignment: .leading, spacing: 10) {
             HStack(spacing: 12) {
-                SlotBadge(slot: state.left, state: state, accent: accent)
-                VStack(alignment: .leading, spacing: 2) {
-                    Text(title)
-                        .font(.system(size: 17, weight: .semibold))
-                    if !state.expandedSubtitle.isEmpty {
-                        Text(state.expandedSubtitle)
-                            .font(.system(size: 13))
-                            .foregroundStyle(Color.white.opacity(0.6))
-                    }
-                }
-                .fontDesign(state.design)
-                .lineLimit(1)
-                .minimumScaleFactor(0.8)
+                SlotBadge(slot: state.left, state: state, accent: accent, diameter: 46)
+                titles(titleSize: 17, subtitleSize: 13)
                 Spacer(minLength: 4)
-                SlotBadge(slot: state.right, state: state, accent: accent)
+                SlotBadge(slot: state.right, state: state, accent: accent, diameter: 46)
             }
-
-            if state.lockChips {
-                HStack(spacing: 6) {
-                    if state.battery >= 0 {
-                        InfoChip(icon: state.charging ? "battery.100.bolt" : "battery.75", text: "\(state.battery)%")
-                    }
-                    if let temp = state.weatherTemp {
-                        InfoChip(icon: state.weatherSymbol.isEmpty ? "cloud.sun.fill" : state.weatherSymbol, text: "\(temp)°")
-                    }
-                    if state.steps >= 0 {
-                        InfoChip(icon: "figure.walk", text: state.steps.formatted())
-                    }
-                    InfoChip(icon: "calendar", text: state.now.formatted(.dateTime.weekday(.abbreviated).day()))
-                    Spacer(minLength: 0)
-                }
-            }
-
-            if state.lockAccent {
-                ProgressView(timerInterval: cycleRange, countsDown: false) {
-                    EmptyView()
-                } currentValueLabel: {
-                    EmptyView()
-                }
-                .progressViewStyle(.linear)
-                .tint(accent)
-            }
+            if state.lockChips { InfoChipRow(state: state) }
+            if state.lockAccent { AccentBar(state: state) }
         }
         .padding(16)
         .foregroundStyle(.white)
+    }
+
+    private var compact: some View {
+        HStack(spacing: 10) {
+            SlotBadge(slot: state.left, state: state, accent: accent, diameter: 36)
+            Text(state.lockTitleText)
+                .font(.system(size: 15, weight: .semibold))
+                .fontDesign(state.design)
+                .lineLimit(1)
+                .minimumScaleFactor(0.8)
+            Spacer(minLength: 4)
+            SlotBadge(slot: state.right, state: state, accent: accent, diameter: 36)
+        }
+        .padding(.horizontal, 14)
+        .padding(.vertical, 10)
+        .foregroundStyle(.white)
+    }
+
+    private var hero: some View {
+        VStack(alignment: .leading, spacing: 10) {
+            HStack(alignment: .top) {
+                SlotBadge(slot: state.left, state: state, accent: accent, diameter: 56)
+                Spacer()
+                SlotBadge(slot: state.right, state: state, accent: accent, diameter: 56)
+            }
+            titles(titleSize: 24, subtitleSize: 14)
+            if state.lockChips { InfoChipRow(state: state) }
+            if state.lockAccent { AccentBar(state: state) }
+        }
+        .padding(18)
+        .foregroundStyle(.white)
+    }
+
+    private func titles(titleSize: CGFloat, subtitleSize: CGFloat) -> some View {
+        VStack(alignment: .leading, spacing: 2) {
+            Text(state.lockTitleText)
+                .font(.system(size: titleSize, weight: .bold))
+            if !state.lockSubtitleText.isEmpty {
+                Text(state.lockSubtitleText)
+                    .font(.system(size: subtitleSize))
+                    .foregroundStyle(Color.white.opacity(0.6))
+            }
+        }
+        .fontDesign(state.design)
+        .lineLimit(1)
+        .minimumScaleFactor(0.8)
     }
 }
 
@@ -74,20 +85,59 @@ struct SlotBadge: View {
     let slot: SlotConfig
     let state: IslandState
     let accent: Color
+    var diameter: CGFloat = 46
 
     var body: some View {
         if slot.content == .empty {
             EmptyView()
         } else if slot.content.isIconLike {
-            SlotView(slot: slot, state: state, size: 26)
-                .frame(width: 46, height: 46)
+            SlotView(slot: slot, state: state, size: diameter * 0.56)
+                .frame(width: diameter, height: diameter)
                 .background(Circle().fill(accent.opacity(0.18)))
                 .overlay(Circle().strokeBorder(accent.opacity(0.35), lineWidth: 1))
         } else {
-            SlotView(slot: slot, state: state, size: 22)
-                .padding(.horizontal, 12)
-                .frame(height: 40)
+            SlotView(slot: slot, state: state, size: diameter * 0.48)
+                .padding(.horizontal, diameter * 0.26)
+                .frame(height: diameter * 0.87)
                 .background(Capsule().fill(Color.white.opacity(0.10)))
+        }
+    }
+}
+
+struct AccentBar: View {
+    let state: IslandState
+
+    private var cycleRange: ClosedRange<Date> {
+        state.cycleStart...max(state.cycleEnd, state.cycleStart.addingTimeInterval(1))
+    }
+
+    var body: some View {
+        ProgressView(timerInterval: cycleRange, countsDown: false) {
+            EmptyView()
+        } currentValueLabel: {
+            EmptyView()
+        }
+        .progressViewStyle(.linear)
+        .tint(state.accentColor)
+    }
+}
+
+struct InfoChipRow: View {
+    let state: IslandState
+
+    var body: some View {
+        HStack(spacing: 6) {
+            if state.battery >= 0 {
+                InfoChip(icon: state.charging ? "battery.100.bolt" : "battery.75", text: "\(state.battery)%")
+            }
+            if let temp = state.weatherTemp {
+                InfoChip(icon: state.weatherSymbol.isEmpty ? "cloud.sun.fill" : state.weatherSymbol, text: "\(temp)°")
+            }
+            if state.steps >= 0 {
+                InfoChip(icon: "figure.walk", text: state.steps.formatted())
+            }
+            InfoChip(icon: "calendar", text: state.now.formatted(.dateTime.weekday(.abbreviated).day()))
+            Spacer(minLength: 0)
         }
     }
 }
@@ -142,6 +192,14 @@ struct ExpandedBottom: View {
                     .fontDesign(state.design)
                     .foregroundStyle(.secondary)
                     .lineLimit(1)
+            }
+            if state.expandedChips {
+                InfoChipRow(state: state)
+                    .foregroundStyle(.white)
+            }
+            if state.expandedBar {
+                AccentBar(state: state)
+                    .padding(.horizontal, 8)
             }
             if state.showButtons {
                 HStack(spacing: 28) {

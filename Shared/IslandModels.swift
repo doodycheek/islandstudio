@@ -166,6 +166,20 @@ enum LockStyle: String, Codable, CaseIterable, Identifiable, Hashable {
     }
 }
 
+enum LockLayout: String, Codable, CaseIterable, Identifiable, Hashable {
+    case classic, compact, hero
+
+    var id: String { rawValue }
+
+    var label: String {
+        switch self {
+        case .classic: return "Classic"
+        case .compact: return "Compact"
+        case .hero: return "Hero"
+        }
+    }
+}
+
 enum ColorMode: String, Codable, CaseIterable, Identifiable, Hashable {
     case solid, gradient, cycle
 
@@ -226,6 +240,13 @@ struct IslandState: Codable, Hashable {
     var lockStyle: LockStyle = .tinted
     var lockChips = true
     var lockAccent = true
+    var lockLayout: LockLayout = .classic
+    var lockOwnText = false
+    var lockTitle = ""
+    var lockSubtitle = ""
+    var glow = false
+    var expandedChips = false
+    var expandedBar = false
 
     // Live values the app keeps refreshing
     var frame = 0
@@ -249,7 +270,8 @@ struct IslandState: Codable, Hashable {
 
     enum CodingKeys: String, CodingKey {
         case left, right, minimal, expandedTitle, expandedSubtitle, keylineHex, fontDesign, bold, imageData
-        case lockStyle, lockChips, lockAccent
+        case lockStyle, lockChips, lockAccent, lockLayout, lockOwnText, lockTitle, lockSubtitle
+        case glow, expandedChips, expandedBar
         case frame, cycleStart, cycleEnd, sessionStart, now, battery, charging, paused, showButtons, bannerText
         case countdownTarget, musicTitle, musicArtist, musicPlaying, musicArt, steps, weatherTemp, weatherSymbol
     }
@@ -280,6 +302,13 @@ extension IslandState {
         lockStyle = c.value(.lockStyle, default: lockStyle)
         lockChips = c.value(.lockChips, default: lockChips)
         lockAccent = c.value(.lockAccent, default: lockAccent)
+        lockLayout = c.value(.lockLayout, default: lockLayout)
+        lockOwnText = c.value(.lockOwnText, default: lockOwnText)
+        lockTitle = c.value(.lockTitle, default: lockTitle)
+        lockSubtitle = c.value(.lockSubtitle, default: lockSubtitle)
+        glow = c.value(.glow, default: glow)
+        expandedChips = c.value(.expandedChips, default: expandedChips)
+        expandedBar = c.value(.expandedBar, default: expandedBar)
         frame = c.value(.frame, default: frame)
         cycleStart = c.value(.cycleStart, default: cycleStart)
         cycleEnd = c.value(.cycleEnd, default: cycleEnd)
@@ -323,15 +352,14 @@ extension IslandState {
         }
     }
 
-    /// Used by "Show the music": album art + music bars, song as the long-press title.
-    mutating func applyMusicStyle() {
-        left = SlotConfig(content: .musicArt)
-        right = SlotConfig(content: .musicBars, colorHex: "FF2D55FF")
-        minimal = SlotConfig(content: .musicBars, colorHex: "FF2D55FF")
-        if !musicTitle.isEmpty {
-            expandedTitle = musicTitle
-            expandedSubtitle = musicArtist
-        }
+    /// Lock Screen title: pop-out banner first, then its own text or the long-press text.
+    var lockTitleText: String {
+        if !bannerText.isEmpty { return bannerText }
+        return lockOwnText ? lockTitle : expandedTitle
+    }
+
+    var lockSubtitleText: String {
+        lockOwnText ? lockSubtitle : expandedSubtitle
     }
 
     /// Accent color without its alpha, for badges, bars and buttons.
@@ -367,6 +395,13 @@ extension IslandState {
         s.lockStyle = lockStyle
         s.lockChips = lockChips
         s.lockAccent = lockAccent
+        s.lockLayout = lockLayout
+        s.lockOwnText = lockOwnText
+        s.lockTitle = lockTitle
+        s.lockSubtitle = lockSubtitle
+        s.glow = glow
+        s.expandedChips = expandedChips
+        s.expandedBar = expandedBar
         return s
     }
 }

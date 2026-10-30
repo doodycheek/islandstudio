@@ -53,10 +53,20 @@ struct SlotView: View {
         return "\(state.musicTitle) - \(state.musicArtist)"
     }
 
+    /// Neon glow color: the slot's own color, or the accent for content without one.
+    private var glowColor: Color {
+        if slot.content == .rainbow {
+            return Color(hue: Double(state.frame % 12) / 12.0, saturation: 0.9, brightness: 1.0)
+        }
+        return slot.content.usesColor ? tintColor : state.accentColor
+    }
+
     var body: some View {
         content
             .fontDesign(state.design)
             .fontWeight(state.bold ? .bold : .regular)
+            .shadow(color: state.glow ? glowColor.opacity(0.9) : Color.clear, radius: state.glow ? size * 0.25 : 0)
+            .shadow(color: state.glow ? glowColor.opacity(0.5) : Color.clear, radius: state.glow ? size * 0.5 : 0)
             .animation(slot.colorMode == .cycle ? Animation.easeInOut(duration: 0.8) : nil, value: state.frame)
     }
 

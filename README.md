@@ -2,6 +2,13 @@
 
 Customizes the Dynamic Island with a Live Activity, plus a background keep-alive so animations keep running.
 
+## v1.3
+- New app layout: Studio / Presets / Settings tabs with card-style screens
+- Preview tabs now control which settings you see (Island, Expanded, Lock Screen)
+- Themes: System / Light / Dark plus 8 accent colors
+- Neon glow, 3 Lock Screen layouts, own Lock Screen text, info chips + accent bar in the expanded view
+- 14 new presets in categories, music layout that keeps your own preset's minimal bubble
+
 ## v1.2
 - UI overhaul: live preview pinned at the top of every screen (Island / Expanded / Lock Screen)
 - Redesigned Lock Screen: Tinted / Black / Glass, info chips, animated accent bar

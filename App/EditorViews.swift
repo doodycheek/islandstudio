@@ -18,9 +18,10 @@ enum PreviewMode: String, CaseIterable, Identifiable {
 
 extension View {
     /// Pins the live preview under the navigation bar, above the scrolling settings.
-    func pinnedPreview() -> some View {
+    /// `music: true` makes the preview show the music layout while this screen is open.
+    func pinnedPreview(music: Bool = false) -> some View {
         safeAreaInset(edge: .top, spacing: 0) {
-            PinnedPreview()
+            PinnedPreview(music: music)
         }
     }
 }
@@ -28,13 +29,14 @@ extension View {
 struct PinnedPreview: View {
     @EnvironmentObject var manager: IslandManager
     @AppStorage("previewMode") private var previewMode = PreviewMode.island.rawValue
+    var music = false
 
     private var mode: PreviewMode { PreviewMode(rawValue: previewMode) ?? .island }
 
     var body: some View {
         VStack(spacing: 8) {
             TimelineView(.periodic(from: .now, by: 0.5)) { ctx in
-                PreviewStage(mode: mode, state: manager.previewState(at: ctx.date))
+                PreviewStage(mode: mode, state: manager.previewState(at: ctx.date, music: music))
             }
             .frame(height: 128)
 
@@ -57,6 +59,7 @@ struct PinnedPreview: View {
 
 struct StatusLine: View {
     @EnvironmentObject var manager: IslandManager
+    @Environment(\.themeAccent) private var accent
 
     private var dotColor: Color {
         if !manager.isRunning { return .gray }
@@ -80,7 +83,24 @@ struct StatusLine: View {
                     .foregroundStyle(.secondary)
                     .lineLimit(1)
             }
-            Spacer(minLength: 0)
+            Spacer(minLength: 4)
+            Button {
+                Task {
+                    if manager.isRunning {
+                        await manager.stop()
+                    } else {
+                        await manager.start()
+                    }
+                }
+            } label: {
+                Text(manager.isRunning ? "Stop" : "Start")
+                    .font(.caption.weight(.bold))
+                    .padding(.horizontal, 14)
+                    .padding(.vertical, 5)
+                    .foregroundStyle(.white)
+                    .background(Capsule().fill(manager.isRunning ? Color.red.opacity(0.85) : accent))
+            }
+            .buttonStyle(.plain)
         }
         .animation(.easeInOut(duration: 0.2), value: manager.status)
     }
@@ -89,13 +109,15 @@ struct StatusLine: View {
 struct PreviewStage: View {
     let mode: PreviewMode
     let state: IslandState
+    @Environment(\.themeAccent) private var accent
 
     var body: some View {
         ZStack {
             RoundedRectangle(cornerRadius: 24, style: .continuous)
-                .fill(LinearGradient(colors: [Color(red: 0.17, green: 0.18, blue: 0.26),
-                                              Color(red: 0.05, green: 0.05, blue: 0.08)],
+                .fill(LinearGradient(colors: [accent.opacity(0.45), Color(red: 0.05, green: 0.05, blue: 0.09)],
                                      startPoint: .topLeading, endPoint: .bottomTrailing))
+            RoundedRectangle(cornerRadius: 24, style: .continuous)
+                .fill(Color.black.opacity(0.35))
 
             switch mode {
             case .island:
@@ -117,7 +139,7 @@ struct PreviewStage: View {
                     }
                     Text("On its own (top) · sharing with a call (bottom)")
                         .font(.caption2)
-                        .foregroundStyle(Color.white.opacity(0.5))
+                        .foregroundStyle(Color.white.opacity(0.55))
                 }
 
             case .expanded:
@@ -129,14 +151,14 @@ struct PreviewStage: View {
                     .background(RoundedRectangle(cornerRadius: 22, style: .continuous).fill(state.lockBackground))
                     .clipShape(RoundedRectangle(cornerRadius: 22, style: .continuous))
                     .padding(.horizontal, 10)
-                    .scaleEffect(0.86)
+                    .scaleEffect(state.lockLayout == .hero ? 0.74 : 0.86)
             }
         }
         .environment(\.colorScheme, .dark)
     }
 }
 
-/// The compact island, drawn in the app.
+/// The compact island, drawn in the app. The outline is faint on purpose: that's how iOS draws it.
 struct IslandPreview: View {
     let state: IslandState
 
@@ -151,7 +173,7 @@ struct IslandPreview: View {
         .padding(.horizontal, 12)
         .frame(width: 300, height: 38)
         .background(Capsule().fill(Color.black))
-        .overlay(Capsule().strokeBorder(Color(hex: state.keylineHex).opacity(0.5), lineWidth: 1))
+        .overlay(Capsule().strokeBorder(Color(hex: state.keylineHex).opacity(0.25), lineWidth: 0.75))
         .environment(\.colorScheme, .dark)
         .padding(.vertical, 8)
     }
@@ -179,7 +201,7 @@ struct ExpandedPreview: View {
         .frame(maxWidth: 350)
         .background(RoundedRectangle(cornerRadius: 40, style: .continuous).fill(Color.black))
         .overlay(RoundedRectangle(cornerRadius: 40, style: .continuous)
-            .strokeBorder(Color(hex: state.keylineHex).opacity(0.5), lineWidth: 1))
+            .strokeBorder(Color(hex: state.keylineHex).opacity(0.25), lineWidth: 0.75))
     }
 }
 
@@ -188,13 +210,16 @@ struct ExpandedPreview: View {
 struct SlotEditor: View {
     @EnvironmentObject var manager: IslandManager
     @AppStorage("previewMode") private var previewMode = PreviewMode.island.rawValue
+    @Environment(\.themeAccent) private var accent
     let title: String
     @Binding var slot: SlotConfig
+    var music = false
 
     private let quickSymbols = ["heart.fill", "star.fill", "bolt.fill", "flame.fill", "moon.fill",
                                 "sparkles", "music.note", "car.fill", "gamecontroller.fill",
                                 "leaf.fill", "crown.fill", "circle.fill", "sun.max.fill", "cloud.fill",
-                                "pawprint.fill", "headphones"]
+                                "pawprint.fill", "headphones", "snowflake", "drop.fill", "moon.stars.fill",
+                                "steeringwheel"]
 
     var body: some View {
         Form {
@@ -233,10 +258,10 @@ struct SlotEditor: View {
                                         .frame(width: 40, height: 40)
                                         .background(
                                             RoundedRectangle(cornerRadius: 10, style: .continuous)
-                                                .fill(slot.symbol == name ? Color.accentColor.opacity(0.25)
+                                                .fill(slot.symbol == name ? accent.opacity(0.25)
                                                                           : Color(.tertiarySystemFill))
                                         )
-                                        .foregroundStyle(slot.symbol == name ? Color.accentColor : Color.primary)
+                                        .foregroundStyle(slot.symbol == name ? accent : Color.primary)
                                 }
                                 .buttonStyle(.plain)
                             }
@@ -269,9 +294,10 @@ struct SlotEditor: View {
                 }
             }
         }
+        .themedForm()
         .navigationTitle(title)
         .navigationBarTitleDisplayMode(.inline)
-        .pinnedPreview()
+        .pinnedPreview(music: music)
         .onAppear { previewMode = PreviewMode.island.rawValue }
     }
 
@@ -281,7 +307,7 @@ struct SlotEditor: View {
     }
 }
 
-// MARK: - Rows and tiles
+// MARK: - Rows, tiles and cards
 
 struct SlotRow: View {
     let title: String
@@ -298,12 +324,38 @@ struct SlotRow: View {
     }
 }
 
-/// A preset button that shows a mini version of the island it applies.
+/// Card row for a slot: live mini render, name, current content.
+struct SlotNavLabel: View {
+    let title: String
+    let slot: SlotConfig
+    let state: IslandState
+
+    var body: some View {
+        HStack(spacing: 12) {
+            SlotView(slot: slot, state: state, size: 16)
+                .frame(width: 34, height: 34)
+                .background(Circle().fill(Color.black))
+                .environment(\.colorScheme, .dark)
+            VStack(alignment: .leading, spacing: 2) {
+                Text(title).foregroundStyle(.primary)
+                Text(slot.content.label).font(.caption).foregroundStyle(.secondary)
+            }
+            Spacer()
+            Image(systemName: "chevron.right")
+                .font(.footnote.weight(.semibold))
+                .foregroundStyle(.tertiary)
+        }
+        .contentShape(Rectangle())
+    }
+}
+
+/// Small preset button with a mini island (used in the Studio strip).
 struct PresetTile: View {
     let preset: SavedPreset
     let isCurrent: Bool
     let state: IslandState
     let action: () -> Void
+    @Environment(\.themeAccent) private var accent
 
     var body: some View {
         Button(action: action) {
@@ -311,16 +363,57 @@ struct PresetTile: View {
                 IslandPreview(state: state)
                     .scaleEffect(0.4)
                     .frame(width: 120, height: 24)
-                HStack(spacing: 4) {
-                    Image(systemName: preset.icon).font(.caption2)
-                    Text(preset.name).font(.caption.weight(.medium)).lineLimit(1)
+                Text(preset.name).font(.caption.weight(.medium)).lineLimit(1)
+            }
+            .frame(width: 132, height: 70)
+            .background(RoundedRectangle(cornerRadius: 16, style: .continuous).fill(Color(.tertiarySystemFill)))
+            .overlay(
+                RoundedRectangle(cornerRadius: 16, style: .continuous)
+                    .strokeBorder(isCurrent ? accent : Color.clear, lineWidth: 2)
+            )
+        }
+        .buttonStyle(.plain)
+    }
+}
+
+/// Large preset card for the Presets gallery.
+struct PresetCard: View {
+    let preset: SavedPreset
+    let category: String
+    let isCurrent: Bool
+    let state: IslandState
+    let action: () -> Void
+    @Environment(\.themeAccent) private var accent
+
+    var body: some View {
+        Button(action: action) {
+            VStack(alignment: .leading, spacing: 10) {
+                ZStack {
+                    RoundedRectangle(cornerRadius: 14, style: .continuous)
+                        .fill(LinearGradient(colors: [Color(red: 0.16, green: 0.17, blue: 0.24),
+                                                      Color(red: 0.05, green: 0.05, blue: 0.08)],
+                                             startPoint: .topLeading, endPoint: .bottomTrailing))
+                    IslandPreview(state: state)
+                        .scaleEffect(0.46)
+                        .frame(width: 140, height: 26)
+                }
+                .frame(height: 64)
+                HStack {
+                    VStack(alignment: .leading, spacing: 2) {
+                        Text(preset.name).font(.subheadline.weight(.semibold)).lineLimit(1)
+                        Text(category).font(.caption).foregroundStyle(.secondary)
+                    }
+                    Spacer(minLength: 0)
+                    if isCurrent {
+                        Image(systemName: "checkmark.circle.fill").foregroundStyle(accent)
+                    }
                 }
             }
-            .frame(width: 132, height: 72)
-            .background(RoundedRectangle(cornerRadius: 14, style: .continuous).fill(Color(.secondarySystemBackground)))
+            .padding(10)
+            .background(RoundedRectangle(cornerRadius: 20, style: .continuous).fill(.regularMaterial))
             .overlay(
-                RoundedRectangle(cornerRadius: 14, style: .continuous)
-                    .strokeBorder(isCurrent ? Color.accentColor : Color.clear, lineWidth: 2)
+                RoundedRectangle(cornerRadius: 20, style: .continuous)
+                    .strokeBorder(isCurrent ? accent : Color.primary.opacity(0.07), lineWidth: isCurrent ? 2 : 1)
             )
         }
         .buttonStyle(.plain)

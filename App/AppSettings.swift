@@ -13,10 +13,16 @@ struct AppSettings: Codable, Hashable {
     var currentPresetID = "neon"
     var schedule = ScheduleSettings()
     var musicMode: MusicMode = .keep
+    var musicLeft = SlotConfig(content: .musicArt)
+    var musicRight = SlotConfig(content: .musicBars, colorHex: "FF2D55FF")
+    var musicLeftUsesMine = false
+    var musicRightUsesMine = true
+    var musicSongTitle = true
 
     enum CodingKeys: String, CodingKey {
         case countdownTarget, useFahrenheit, latitude, longitude, chargingMode
         case hourlyPopOut, chimeSound, showIslandButtons, currentPresetID, schedule, musicMode
+        case musicLeft, musicRight, musicLeftUsesMine, musicRightUsesMine, musicSongTitle
     }
 }
 
@@ -35,6 +41,11 @@ extension AppSettings {
         currentPresetID = c.value(.currentPresetID, default: currentPresetID)
         schedule = c.value(.schedule, default: schedule)
         musicMode = c.value(.musicMode, default: musicMode)
+        musicLeft = c.value(.musicLeft, default: musicLeft)
+        musicRight = c.value(.musicRight, default: musicRight)
+        musicLeftUsesMine = c.value(.musicLeftUsesMine, default: musicLeftUsesMine)
+        musicRightUsesMine = c.value(.musicRightUsesMine, default: musicRightUsesMine)
+        musicSongTitle = c.value(.musicSongTitle, default: musicSongTitle)
     }
 }
 
@@ -74,7 +85,7 @@ enum MusicMode: String, Codable, CaseIterable, Identifiable, Hashable {
         case .keep:
             return "Your island stays as it is. iOS keeps it in the big spot and puts the music player in the small bubble."
         case .showMusic:
-            return "While anything is playing, your island switches to album art and music bars, then switches back when it stops. Song details come from Apple Music; the bars work with any app."
+            return "While anything plays, the island shows your music layout: album art on one side and your own preset's minimal bubble on the other, then switches back when it stops. Song details come from Apple Music."
         case .hide:
             return "Your island steps aside so the music player gets the whole island, then comes back when the music stops. FaceTime and phone calls never trigger this."
         }
