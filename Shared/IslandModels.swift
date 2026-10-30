@@ -10,7 +10,7 @@ struct IslandAttributes: ActivityAttributes {
 // MARK: - What a slot can show
 
 enum SlotCategory: String, CaseIterable, Identifiable {
-    case basic, info, animated
+    case basic, info, tools, animated
 
     var id: String { rawValue }
 
@@ -18,6 +18,7 @@ enum SlotCategory: String, CaseIterable, Identifiable {
         switch self {
         case .basic: return "Static"
         case .info: return "Live info"
+        case .tools: return "Tools"
         case .animated: return "Animated"
         }
     }
@@ -28,6 +29,8 @@ enum SlotCategory: String, CaseIterable, Identifiable {
 enum SlotContent: String, Codable, CaseIterable, Identifiable, Hashable {
     case empty, text, emoji, symbol, image
     case clock, liveClock, date, battery, music, musicArt, steps, weather, countdown
+    case daysCounter, moon, crypto, worldClock
+    case counter, pomodoro, messages
     case ring, bar, timer, pulse, equalizer, spin, rainbow, marquee, musicBars, chargeBar
 
     var id: String { rawValue }
@@ -36,8 +39,11 @@ enum SlotContent: String, Codable, CaseIterable, Identifiable, Hashable {
         switch self {
         case .empty, .text, .emoji, .symbol, .image:
             return .basic
-        case .clock, .liveClock, .date, .battery, .music, .musicArt, .steps, .weather, .countdown:
+        case .clock, .liveClock, .date, .battery, .music, .musicArt, .steps, .weather, .countdown,
+             .daysCounter, .moon, .crypto, .worldClock:
             return .info
+        case .counter, .pomodoro, .messages:
+            return .tools
         case .ring, .bar, .timer, .pulse, .equalizer, .spin, .rainbow, .marquee, .musicBars, .chargeBar:
             return .animated
         }
@@ -59,6 +65,13 @@ enum SlotContent: String, Codable, CaseIterable, Identifiable, Hashable {
         case .steps: return "Steps"
         case .weather: return "Weather"
         case .countdown: return "Countdown"
+        case .daysCounter: return "Days counter"
+        case .moon: return "Moon phase"
+        case .crypto: return "Crypto price"
+        case .worldClock: return "World clock"
+        case .counter: return "Tap counter"
+        case .pomodoro: return "Focus timer"
+        case .messages: return "Rotating messages"
         case .ring: return "Looping ring"
         case .bar: return "Looping bar"
         case .timer: return "Running timer"
@@ -88,6 +101,13 @@ enum SlotContent: String, Codable, CaseIterable, Identifiable, Hashable {
         case .steps: return "figure.walk"
         case .weather: return "cloud.sun.fill"
         case .countdown: return "hourglass"
+        case .daysCounter: return "calendar.badge.clock"
+        case .moon: return "moonphase.waxing.gibbous"
+        case .crypto: return "bitcoinsign.circle.fill"
+        case .worldClock: return "globe"
+        case .counter: return "plus.circle.fill"
+        case .pomodoro: return "timer"
+        case .messages: return "text.bubble.fill"
         case .ring: return "circle.dashed"
         case .bar: return "rectangle.fill"
         case .timer: return "stopwatch"
@@ -108,9 +128,25 @@ enum SlotContent: String, Codable, CaseIterable, Identifiable, Hashable {
         case .steps:
             return "Today's steps from your iPhone's motion sensor."
         case .weather:
-            return "Current weather for your saved location. Set it under Live info."
+            return "Shows the real current weather: rain, sun, snow and so on. Set your location under Settings → Live info."
         case .countdown:
-            return "Set the date under Live info. Add an emoji or short label below."
+            return "Set the date under Settings → Live info. Add an emoji or short label below."
+        case .battery:
+            return "Shows your real battery level. Turns green while charging and red under 20%."
+        case .daysCounter:
+            return "Counts days since the date you set under Settings → Tools."
+        case .moon:
+            return "Today's moon phase and how lit it is. Works offline."
+        case .crypto:
+            return "Price and 24-hour change from CoinGecko. Pick the coin under Settings → Tools."
+        case .worldClock:
+            return "The time in another city. Pick the city under Settings → Tools."
+        case .counter:
+            return "Long-press the island to tap + and −. Set a goal under Settings → Tools."
+        case .pomodoro:
+            return "Start it from the long-press view or Settings → Tools. Pops out when each phase ends."
+        case .messages:
+            return "Cycles through your own messages. Edit them under Settings → Tools."
         case .marquee:
             return "Scrolls one letter per animation step. Lower the animation step for faster scrolling."
         case .chargeBar:
@@ -131,12 +167,20 @@ enum SlotContent: String, Codable, CaseIterable, Identifiable, Hashable {
         case .emoji: return "Emoji"
         case .countdown: return "Label or emoji (optional)"
         case .marquee: return "Scrolling message"
+        case .counter: return "Emoji (optional, like 💧)"
+        case .daysCounter: return "Emoji or label (like 💜)"
+        case .worldClock: return "City or emoji (like 🇯🇵)"
         default: return "Text"
         }
     }
 
-    var usesText: Bool { self == .text || self == .emoji || self == .marquee || self == .countdown }
+    var usesText: Bool {
+        self == .text || self == .emoji || self == .marquee || self == .countdown
+            || self == .counter || self == .daysCounter || self == .worldClock
+    }
+
     var usesSymbol: Bool { self == .symbol || self == .pulse || self == .spin || self == .rainbow }
+
     /// Compact, square-ish content (gets a round badge on the Lock Screen). Text-like content gets a pill.
     var isIconLike: Bool {
         switch self {
@@ -180,8 +224,23 @@ enum LockLayout: String, Codable, CaseIterable, Identifiable, Hashable {
     }
 }
 
+/// A colored backing behind the island's icons and text.
+enum IslandBG: String, Codable, CaseIterable, Identifiable, Hashable {
+    case none, tint, gradient
+
+    var id: String { rawValue }
+
+    var label: String {
+        switch self {
+        case .none: return "Off"
+        case .tint: return "Tint"
+        case .gradient: return "Gradient"
+        }
+    }
+}
+
 enum ColorMode: String, Codable, CaseIterable, Identifiable, Hashable {
-    case solid, gradient, cycle
+    case solid, gradient, cycle, live
 
     var id: String { rawValue }
 
@@ -190,6 +249,7 @@ enum ColorMode: String, Codable, CaseIterable, Identifiable, Hashable {
         case .solid: return "Solid"
         case .gradient: return "Gradient"
         case .cycle: return "Cycle"
+        case .live: return "Live"
         }
     }
 }
@@ -247,6 +307,7 @@ struct IslandState: Codable, Hashable {
     var glow = false
     var expandedChips = false
     var expandedBar = false
+    var islandBg: IslandBG = .none
 
     // Live values the app keeps refreshing
     var frame = 0
@@ -267,13 +328,28 @@ struct IslandState: Codable, Hashable {
     var steps = -1
     var weatherTemp: Int? = nil
     var weatherSymbol = ""
+    var rotatingText = ""
+    var counter = 0
+    var counterGoal = 0
+    var showCounterButtons = false
+    var showTimerButton = false
+    var pomoPhase = ""
+    var pomoStart = Date()
+    var pomoEnd = Date()
+    var daysSince = Date()
+    var cryptoSymbol = ""
+    var cryptoPrice: Double? = nil
+    var cryptoChange: Double? = nil
+    var worldTZ = ""
 
     enum CodingKeys: String, CodingKey {
         case left, right, minimal, expandedTitle, expandedSubtitle, keylineHex, fontDesign, bold, imageData
         case lockStyle, lockChips, lockAccent, lockLayout, lockOwnText, lockTitle, lockSubtitle
-        case glow, expandedChips, expandedBar
+        case glow, expandedChips, expandedBar, islandBg
         case frame, cycleStart, cycleEnd, sessionStart, now, battery, charging, paused, showButtons, bannerText
         case countdownTarget, musicTitle, musicArtist, musicPlaying, musicArt, steps, weatherTemp, weatherSymbol
+        case rotatingText, counter, counterGoal, showCounterButtons, showTimerButton
+        case pomoPhase, pomoStart, pomoEnd, daysSince, cryptoSymbol, cryptoPrice, cryptoChange, worldTZ
     }
 
     var design: Font.Design {
@@ -309,6 +385,7 @@ extension IslandState {
         glow = c.value(.glow, default: glow)
         expandedChips = c.value(.expandedChips, default: expandedChips)
         expandedBar = c.value(.expandedBar, default: expandedBar)
+        islandBg = c.value(.islandBg, default: islandBg)
         frame = c.value(.frame, default: frame)
         cycleStart = c.value(.cycleStart, default: cycleStart)
         cycleEnd = c.value(.cycleEnd, default: cycleEnd)
@@ -327,6 +404,19 @@ extension IslandState {
         steps = c.value(.steps, default: steps)
         weatherTemp = c.optional(.weatherTemp)
         weatherSymbol = c.value(.weatherSymbol, default: weatherSymbol)
+        rotatingText = c.value(.rotatingText, default: rotatingText)
+        counter = c.value(.counter, default: counter)
+        counterGoal = c.value(.counterGoal, default: counterGoal)
+        showCounterButtons = c.value(.showCounterButtons, default: showCounterButtons)
+        showTimerButton = c.value(.showTimerButton, default: showTimerButton)
+        pomoPhase = c.value(.pomoPhase, default: pomoPhase)
+        pomoStart = c.value(.pomoStart, default: pomoStart)
+        pomoEnd = c.value(.pomoEnd, default: pomoEnd)
+        daysSince = c.value(.daysSince, default: daysSince)
+        cryptoSymbol = c.value(.cryptoSymbol, default: cryptoSymbol)
+        cryptoPrice = c.optional(.cryptoPrice)
+        cryptoChange = c.optional(.cryptoChange)
+        worldTZ = c.value(.worldTZ, default: worldTZ)
     }
 
     func uses(_ content: SlotContent) -> Bool {
@@ -341,14 +431,16 @@ extension IslandState {
         (try? JSONEncoder().encode(self))?.count ?? 0
     }
 
-    /// Drops the heaviest optional data until the state fits ActivityKit's 4 KB limit.
-    mutating func fitToBudget(limit: Int = 3800) {
+    /// Drops the heaviest optional data until the state fits ActivityKit's 4 KB limit (with a safety margin).
+    mutating func fitToBudget(limit: Int = 3500) {
         if encodedSize > limit { musicArt = nil }
         if encodedSize > limit { imageData = nil }
         if encodedSize > limit {
             musicTitle = String(musicTitle.prefix(20))
             musicArtist = ""
             expandedSubtitle = String(expandedSubtitle.prefix(20))
+            rotatingText = String(rotatingText.prefix(20))
+            lockSubtitle = ""
         }
     }
 
@@ -402,6 +494,7 @@ extension IslandState {
         s.glow = glow
         s.expandedChips = expandedChips
         s.expandedBar = expandedBar
+        s.islandBg = islandBg
         return s
     }
 }
@@ -450,6 +543,15 @@ extension Color {
         var r: CGFloat = 0, g: CGFloat = 0, b: CGFloat = 0, a: CGFloat = 0
         UIColor(self).getRed(&r, green: &g, blue: &b, alpha: &a)
         return Color(.sRGB, red: Double(r) * factor, green: Double(g) * factor, blue: Double(b) * factor, opacity: 1)
+    }
+
+    /// Rotates the hue, for gradients that stay in the same family.
+    func hueShifted(_ delta: Double) -> Color {
+        var h: CGFloat = 0, s: CGFloat = 0, b: CGFloat = 0, a: CGFloat = 0
+        UIColor(self).getHue(&h, saturation: &s, brightness: &b, alpha: &a)
+        var shifted = Double(h) + delta
+        shifted -= floor(shifted)
+        return Color(hue: shifted, saturation: Double(s), brightness: Double(b), opacity: Double(a))
     }
 
     var hexString: String {

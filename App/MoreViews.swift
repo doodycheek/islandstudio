@@ -26,6 +26,13 @@ struct LiveInfoSettingsView: View {
                             .font(.subheadline.weight(.semibold))
                     }
                     RowDivider()
+                    Button {
+                        manager.refreshWeatherNow()
+                    } label: {
+                        Label("Refresh weather now", systemImage: "arrow.clockwise")
+                            .font(.subheadline.weight(.semibold))
+                    }
+                    RowDivider()
                     HStack {
                         Text("Right now")
                         Spacer()

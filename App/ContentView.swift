@@ -105,6 +105,16 @@ struct IslandSettings: View {
                 .buttonStyle(.plain)
             }
 
+            Card(title: "Island background", icon: "rectangle.inset.filled", tint: .indigo,
+                 footer: "iOS keeps the island itself pure black so it blends into the camera, and apps can't change that. This adds a colored backing behind your icons and text, and inside the long-press view, using your accent color.") {
+                Picker("Background", selection: $manager.config.islandBg) {
+                    ForEach(IslandBG.allCases) { bg in
+                        Text(bg.label).tag(bg)
+                    }
+                }
+                .pickerStyle(.segmented)
+            }
+
             Card(title: "Style", icon: "paintbrush.fill", tint: .pink,
                  footer: "iOS only draws the island's outline faintly, and only in Dark Mode. Neon glow makes the island's own icons and text glow, which you can actually see.") {
                 HStack(spacing: 10) {
@@ -222,6 +232,9 @@ struct ExpandedSettings: View {
                 ToggleRow(title: "Preset buttons", icon: "hand.tap.fill", color: .indigo,
                           isOn: $manager.settings.showIslandButtons)
                 RowDivider()
+                ToggleRow(title: "Counter + / − buttons", icon: "plus.circle.fill", color: .blue,
+                          isOn: $manager.settings.counterButtons)
+                RowDivider()
                 ToggleRow(title: "Info chips", icon: "square.grid.2x2.fill", color: .teal,
                           isOn: $manager.config.expandedChips)
                 RowDivider()
@@ -230,14 +243,23 @@ struct ExpandedSettings: View {
             }
 
             Card(title: "Pop-outs", icon: "rectangle.expand.vertical", tint: .orange,
-                 footer: "Pop-outs briefly expand the island on their own. After tapping Test, swipe home within 5 seconds.") {
+                 footer: "Pop-outs briefly expand the island on their own. Headphones show the device name, because iOS doesn't share AirPods battery with apps. After tapping Test, swipe home within 5 seconds.") {
                 ToggleRow(title: "Charging pop-out", icon: "bolt.fill", color: .green,
                           isOn: $manager.settings.chargingMode)
+                RowDivider()
+                ToggleRow(title: "Charging look while plugged in", icon: "battery.100.bolt", color: .mint,
+                          isOn: $manager.settings.chargingTakeover)
+                RowDivider()
+                ToggleRow(title: "Low battery alert", icon: "battery.25", color: .red,
+                          isOn: $manager.settings.lowBatteryAlert)
+                RowDivider()
+                ToggleRow(title: "Headphones connected", icon: "headphones", color: .pink,
+                          isOn: $manager.settings.headphonesPopOut)
                 RowDivider()
                 ToggleRow(title: "Hourly pop-out", icon: "clock.fill", color: .orange,
                           isOn: $manager.settings.hourlyPopOut)
                 RowDivider()
-                ToggleRow(title: "Play sound", icon: "speaker.wave.2.fill", color: .pink,
+                ToggleRow(title: "Play sound", icon: "speaker.wave.2.fill", color: .purple,
                           isOn: $manager.settings.chimeSound)
                 RowDivider()
                 Button {

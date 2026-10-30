@@ -72,6 +72,13 @@ struct SettingsView: View {
 
                     Card(title: "Live info & automation", icon: "antenna.radiowaves.left.and.right", tint: .blue) {
                         NavigationLink {
+                            ToolsView()
+                        } label: {
+                            NavRowLabel(title: "Tools & data slots", icon: "wrench.and.screwdriver.fill", color: .orange)
+                        }
+                        .buttonStyle(.plain)
+                        RowDivider()
+                        NavigationLink {
                             LiveInfoSettingsView()
                         } label: {
                             NavRowLabel(title: "Weather, steps, countdown", icon: "cloud.sun.fill", color: .blue)
@@ -87,6 +94,47 @@ struct SettingsView: View {
                         .buttonStyle(.plain)
                     }
 
+                    Card(title: "Automatic presets", icon: "calendar.badge.clock", tint: .green,
+                         footer: "Holiday presets switch on once at the start of each holiday day: Valentine's, Halloween, Christmas and New Year. Your birthday gets its own preset. They beat the auto schedule for that day.") {
+                        ToggleRow(title: "Holiday presets", icon: "gift.fill", color: .red,
+                                  isOn: $manager.settings.holidayAuto)
+                        RowDivider()
+                        ToggleRow(title: "Birthday preset", icon: "birthday.cake.fill", color: .pink,
+                                  isOn: $manager.settings.birthdayEnabled)
+                        if manager.settings.birthdayEnabled {
+                            RowDivider()
+                            DatePicker("My birthday", selection: $manager.settings.birthday,
+                                       displayedComponents: .date)
+                        }
+                    }
+
+                    Card(title: "Backup", icon: "externaldrive.fill", tint: .gray,
+                         footer: "Copies your settings, presets and photo as one code. Your location is left out. Paste it on a fresh install to restore everything.") {
+                        HStack(spacing: 10) {
+                            Button {
+                                manager.copyBackup()
+                            } label: {
+                                Label("Copy backup", systemImage: "doc.on.doc")
+                                    .font(.subheadline.weight(.semibold))
+                                    .frame(maxWidth: .infinity)
+                                    .padding(.vertical, 10)
+                                    .background(RoundedRectangle(cornerRadius: 12, style: .continuous)
+                                        .fill(Color(.tertiarySystemFill)))
+                            }
+                            Button {
+                                manager.restoreBackupFromClipboard()
+                            } label: {
+                                Label("Restore", systemImage: "arrow.down.doc")
+                                    .font(.subheadline.weight(.semibold))
+                                    .frame(maxWidth: .infinity)
+                                    .padding(.vertical, 10)
+                                    .background(RoundedRectangle(cornerRadius: 12, style: .continuous)
+                                        .fill(Color(.tertiarySystemFill)))
+                            }
+                        }
+                        .buttonStyle(.plain)
+                    }
+
                     Card(title: "Background", icon: "bolt.fill", tint: .yellow,
                          footer: "Background mode keeps animations, live info, pop-outs and the schedule running. Don't swipe the app away in the app switcher.") {
                         ToggleRow(title: "Keep running in background", icon: "arrow.triangle.2.circlepath",
@@ -98,7 +146,7 @@ struct SettingsView: View {
                             .font(.callout)
                     }
 
-                    Text("Island Studio 1.3")
+                    Text("Island Studio 1.4")
                         .font(.footnote)
                         .foregroundStyle(.secondary)
                         .padding(.top, 4)

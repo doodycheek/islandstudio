@@ -11,7 +11,19 @@ struct SlotView: View {
     private var c2: Color { Color(hex: slot.color2Hex) }
     private var evenFrame: Bool { state.frame % 2 == 0 }
 
-    /// Fill for text and icons: solid, gradient, or alternating colors.
+    /// Color that reacts to live data (Live color mode).
+    private var liveColor: Color {
+        switch slot.content {
+        case .crypto:
+            return (state.cryptoChange ?? 0) >= 0 ? Color.green : Color.red
+        case .pomodoro:
+            return state.pomoPhase == "break" ? Color.green : Color(red: 1.0, green: 0.35, blue: 0.3)
+        default:
+            return c1
+        }
+    }
+
+    /// Fill for text and icons: solid, gradient, alternating colors, or live.
     private var paint: AnyShapeStyle {
         switch slot.colorMode {
         case .solid:
@@ -20,11 +32,19 @@ struct SlotView: View {
             return AnyShapeStyle(LinearGradient(colors: [c1, c2], startPoint: .topLeading, endPoint: .bottomTrailing))
         case .cycle:
             return AnyShapeStyle(evenFrame ? c1 : c2)
+        case .live:
+            return AnyShapeStyle(liveColor)
         }
     }
 
     /// Progress views only take a plain color.
-    private var tintColor: Color { (slot.colorMode == .cycle && !evenFrame) ? c2 : c1 }
+    private var tintColor: Color {
+        switch slot.colorMode {
+        case .cycle: return evenFrame ? c1 : c2
+        case .live: return liveColor
+        default: return c1
+        }
+    }
 
     private var marqueeWidth: Int { size < 28 ? 8 : 10 }
     private var marqueeFont: CGFloat { min(size * 0.7, 16) }
@@ -35,16 +55,6 @@ struct SlotView: View {
 
     private var cycleRange: ClosedRange<Date> {
         state.cycleStart...max(state.cycleEnd, state.cycleStart.addingTimeInterval(1))
-    }
-
-    private var batterySymbol: String {
-        if state.charging { return "battery.100.bolt" }
-        let b = state.battery
-        if b < 0 || b >= 88 { return "battery.100" }
-        if b >= 63 { return "battery.75" }
-        if b >= 38 { return "battery.50" }
-        if b >= 13 { return "battery.25" }
-        return "battery.0"
     }
 
     private var musicLine: String {
@@ -128,12 +138,13 @@ struct SlotView: View {
                 .lineLimit(1)
 
         case .battery:
-            HStack(spacing: 2) {
-                Image(systemName: batterySymbol)
+            let color = BatteryGlyph.autoColor(level: state.battery, charging: state.charging, normal: tintColor)
+            HStack(spacing: 4) {
+                BatteryGlyph(level: state.battery, charging: state.charging, color: color, size: size * 0.8)
                 if state.battery >= 0 { Text("\(state.battery)%") }
             }
             .font(.system(size: size * 0.6))
-            .foregroundStyle(paint)
+            .foregroundStyle(color)
 
         case .music:
             Text(Marquee.window(musicLine, frame: state.musicPlaying ? state.frame : 0, width: marqueeWidth))
@@ -173,6 +184,8 @@ struct SlotView: View {
         case .weather:
             HStack(spacing: 3) {
                 Image(systemName: state.weatherSymbol.isEmpty ? "cloud.sun.fill" : state.weatherSymbol)
+                    .symbolRenderingMode(slot.colorMode == .live ? SymbolRenderingMode.multicolor
+                                                                  : SymbolRenderingMode.monochrome)
                 Text(state.weatherTemp.map { "\($0)°" } ?? "--°")
             }
             .font(.system(size: size * 0.62))
@@ -181,6 +194,77 @@ struct SlotView: View {
 
         case .countdown:
             CountdownLabel(prefix: slot.text, target: state.countdownTarget, paint: paint, size: size)
+
+        case .daysCounter:
+            let days = max(0, Calendar.current.dateComponents([.day], from: state.daysSince, to: state.now).day ?? 0)
+            HStack(spacing: 3) {
+                if slot.text.isEmpty {
+                    Image(systemName: "calendar")
+                } else {
+                    Text(slot.text)
+                }
+                Text("\(days)d")
+            }
+            .font(.system(size: size * 0.62))
+            .foregroundStyle(paint)
+            .lineLimit(1)
+
+        case .moon:
+            let phase = MoonPhase.info(for: state.now)
+            HStack(spacing: 3) {
+                Image(systemName: phase.symbol)
+                Text("\(phase.percent)%")
+            }
+            .font(.system(size: size * 0.62))
+            .foregroundStyle(paint)
+            .lineLimit(1)
+
+        case .crypto:
+            HStack(spacing: 3) {
+                Text(state.cryptoSymbol.isEmpty ? "BTC" : state.cryptoSymbol)
+                Text(CryptoFormat.price(state.cryptoPrice))
+                if let change = state.cryptoChange {
+                    Image(systemName: change >= 0 ? "arrowtriangle.up.fill" : "arrowtriangle.down.fill")
+                        .font(.system(size: size * 0.32))
+                }
+            }
+            .font(.system(size: size * 0.58))
+            .foregroundStyle(paint)
+            .lineLimit(1)
+            .minimumScaleFactor(0.6)
+
+        case .worldClock:
+            HStack(spacing: 3) {
+                if !slot.text.isEmpty { Text(slot.text) }
+                Text(state.now, format: Date.FormatStyle(timeZone: TimeZone(identifier: state.worldTZ) ?? TimeZone.current).hour().minute())
+                    .monospacedDigit()
+            }
+            .font(.system(size: size * 0.66))
+            .foregroundStyle(paint)
+            .lineLimit(1)
+
+        case .counter:
+            HStack(spacing: 3) {
+                if !slot.text.isEmpty { Text(slot.text) }
+                Text(state.counterGoal > 0 ? "\(state.counter)/\(state.counterGoal)" : "\(state.counter)")
+                    .monospacedDigit()
+            }
+            .font(.system(size: size * 0.64))
+            .foregroundStyle(paint)
+            .lineLimit(1)
+            .minimumScaleFactor(0.6)
+
+        case .pomodoro:
+            PomodoroLabel(state: state, paint: paint, size: size)
+
+        case .messages:
+            Text(Marquee.window(state.rotatingText.isEmpty ? "Add messages in Settings" : state.rotatingText,
+                                frame: state.frame, width: marqueeWidth))
+                .font(.system(size: marqueeFont))
+                .fontDesign(.monospaced)
+                .foregroundStyle(paint)
+                .lineLimit(1)
+                .minimumScaleFactor(0.6)
 
         case .ring:
             ProgressView(timerInterval: cycleRange, countsDown: false) {
@@ -249,6 +333,79 @@ struct SlotView: View {
             ChargeBarView(level: state.battery >= 0 ? Double(state.battery) / 100 : 1,
                           frame: state.frame, paint: paint, outline: c1, size: size)
         }
+    }
+}
+
+// MARK: - Pieces
+
+/// A battery drawn to scale, so it always shows your real level.
+struct BatteryGlyph: View {
+    let level: Int
+    let charging: Bool
+    let color: Color
+    let size: CGFloat
+
+    /// Green while charging, red when low, orange when getting low, otherwise the normal color.
+    static func autoColor(level: Int, charging: Bool, normal: Color) -> Color {
+        if charging { return Color.green }
+        if level >= 0 && level <= 20 { return Color.red }
+        if level >= 0 && level <= 35 { return Color.orange }
+        return normal
+    }
+
+    var body: some View {
+        let w = size * 1.05
+        let h = size * 0.52
+        let fraction = level < 0 ? 1.0 : min(max(Double(level) / 100, 0), 1)
+        HStack(spacing: 1) {
+            ZStack(alignment: .leading) {
+                RoundedRectangle(cornerRadius: h * 0.3, style: .continuous)
+                    .strokeBorder(color.opacity(0.6), lineWidth: 1)
+                RoundedRectangle(cornerRadius: h * 0.2, style: .continuous)
+                    .fill(color)
+                    .frame(width: max(2, (w - 4) * fraction), height: h - 4)
+                    .padding(.leading, 2)
+            }
+            .frame(width: w, height: h)
+            RoundedRectangle(cornerRadius: 1)
+                .fill(color.opacity(0.6))
+                .frame(width: 2, height: h * 0.4)
+        }
+        .overlay {
+            if charging {
+                Image(systemName: "bolt.fill")
+                    .font(.system(size: h * 0.7))
+                    .foregroundStyle(Color.white)
+                    .shadow(color: Color.black.opacity(0.6), radius: 1)
+                    .offset(x: -1)
+            }
+        }
+    }
+}
+
+struct PomodoroLabel: View {
+    let state: IslandState
+    let paint: AnyShapeStyle
+    let size: CGFloat
+
+    var body: some View {
+        let isFocus = state.pomoPhase != "break"
+        HStack(spacing: 3) {
+            if state.pomoPhase.isEmpty {
+                Image(systemName: "timer")
+                Text("Focus")
+            } else {
+                Text(isFocus ? "🍅" : "☕")
+                Text(timerInterval: state.pomoStart...max(state.pomoEnd, state.pomoStart.addingTimeInterval(1)),
+                     countsDown: true, showsHours: false)
+                    .monospacedDigit()
+                    .multilineTextAlignment(.center)
+                    .frame(width: size * 2.2)
+            }
+        }
+        .font(.system(size: size * 0.62))
+        .foregroundStyle(paint)
+        .lineLimit(1)
     }
 }
 
@@ -333,5 +490,36 @@ struct CountdownLabel: View {
         .font(.system(size: size * 0.62))
         .foregroundStyle(paint)
         .lineLimit(1)
+    }
+}
+
+// MARK: - Offline helpers
+
+enum MoonPhase {
+    static func info(for date: Date) -> (symbol: String, percent: Int, name: String) {
+        let synodic = 29.530588853
+        // A known new moon: 6 Jan 2000, 18:14 UTC.
+        let reference = Date(timeIntervalSince1970: 947_182_440)
+        let days = date.timeIntervalSince(reference) / 86_400
+        var fraction = days.truncatingRemainder(dividingBy: synodic) / synodic
+        if fraction < 0 { fraction += 1 }
+        let illumination = (1 - cos(2 * Double.pi * fraction)) / 2
+        let symbols = ["moonphase.new.moon", "moonphase.waxing.crescent", "moonphase.first.quarter",
+                       "moonphase.waxing.gibbous", "moonphase.full.moon", "moonphase.waning.gibbous",
+                       "moonphase.last.quarter", "moonphase.waning.crescent"]
+        let names = ["New moon", "Waxing crescent", "First quarter", "Waxing gibbous",
+                     "Full moon", "Waning gibbous", "Last quarter", "Waning crescent"]
+        let index = Int((fraction * 8).rounded()) % 8
+        return (symbols[index], Int((illumination * 100).rounded()), names[index])
+    }
+}
+
+enum CryptoFormat {
+    static func price(_ value: Double?) -> String {
+        guard let value else { return "--" }
+        if value >= 10_000 { return String(format: "$%.1fk", value / 1000) }
+        if value >= 100 { return String(format: "$%.0f", value) }
+        if value >= 1 { return String(format: "$%.2f", value) }
+        return String(format: "$%.4f", value)
     }
 }

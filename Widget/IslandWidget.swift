@@ -6,6 +6,7 @@ import WidgetKit
 struct IslandWidgetBundle: WidgetBundle {
     var body: some Widget {
         IslandLiveActivity()
+        IslandClockWidget()
     }
 }
 
@@ -19,10 +20,14 @@ struct IslandLiveActivity: Widget {
             let s = context.state
             return DynamicIsland {
                 DynamicIslandExpandedRegion(.leading) {
-                    SlotView(slot: s.left, state: s, size: 34).padding(.leading, 4)
+                    SlotView(slot: s.left, state: s, size: 34)
+                        .islandPanel(s)
+                        .padding(.leading, 4)
                 }
                 DynamicIslandExpandedRegion(.trailing) {
-                    SlotView(slot: s.right, state: s, size: 34).padding(.trailing, 4)
+                    SlotView(slot: s.right, state: s, size: 34)
+                        .islandPanel(s)
+                        .padding(.trailing, 4)
                 }
                 DynamicIslandExpandedRegion(.center) {
                     ExpandedTitle(state: s)
@@ -31,11 +36,11 @@ struct IslandLiveActivity: Widget {
                     ExpandedBottom(state: s)
                 }
             } compactLeading: {
-                SlotView(slot: s.left, state: s, size: 20)
+                CompactSlot(slot: s.left, state: s)
             } compactTrailing: {
-                SlotView(slot: s.right, state: s, size: 20)
+                CompactSlot(slot: s.right, state: s)
             } minimal: {
-                SlotView(slot: s.minimal, state: s, size: 20)
+                CompactSlot(slot: s.minimal, state: s, minimal: true)
             }
             .keylineTint(Color(hex: s.keylineHex))
         }

@@ -87,5 +87,13 @@ struct IslandShortcuts: AppShortcutsProvider {
                     phrases: ["Stop my island in \(.applicationName)"],
                     shortTitle: "Stop Island",
                     systemImageName: "stop.fill")
+        AppShortcut(intent: PomodoroToggleIntent(),
+                    phrases: ["Start my focus timer in \(.applicationName)"],
+                    shortTitle: "Focus Timer",
+                    systemImageName: "timer")
+        AppShortcut(intent: CounterPlusIntent(),
+                    phrases: ["Add one to my counter in \(.applicationName)"],
+                    shortTitle: "Add One",
+                    systemImageName: "plus.circle.fill")
     }
 }

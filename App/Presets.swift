@@ -35,9 +35,9 @@ enum PresetStore {
             s.keylineHex = "FF2D55FF"
         },
         make("weather", "Weather", "cloud.sun.fill") { (s: inout IslandState) in
-            s.left = SlotConfig(content: .weather, colorHex: "FFD60AFF")
+            s.left = SlotConfig(content: .weather, colorHex: "FFD60AFF", colorMode: .live)
             s.right = SlotConfig(content: .steps, colorHex: "30D158FF")
-            s.minimal = SlotConfig(content: .weather, colorHex: "FFD60AFF")
+            s.minimal = SlotConfig(content: .weather, colorHex: "FFD60AFF", colorMode: .live)
             s.keylineHex = "64D2FFFF"
         },
         make("countdown", "Countdown", "hourglass") { (s: inout IslandState) in
@@ -222,15 +222,105 @@ enum PresetStore {
         },
         make("winter", "Winter", "snowflake") { (s: inout IslandState) in
             s.left = SlotConfig(content: .spin, symbol: "snowflake", colorHex: "A0E9FFFF")
-            s.right = SlotConfig(content: .weather, colorHex: "E0F7FFFF")
+            s.right = SlotConfig(content: .weather, colorHex: "E0F7FFFF", colorMode: .live)
             s.minimal = SlotConfig(content: .spin, symbol: "snowflake", colorHex: "A0E9FFFF")
             s.keylineHex = "A0E9FFFF"
             s.lockStyle = .glass
             s.expandedTitle = "Let it snow"
+        },
+        make("focus", "Focus", "timer") { (s: inout IslandState) in
+            s.left = SlotConfig(content: .pomodoro, colorHex: "FFFFFFFF", colorMode: .live)
+            s.right = SlotConfig(content: .ring, colorHex: "FF5A4DFF")
+            s.minimal = SlotConfig(content: .symbol, symbol: "timer", colorHex: "FF5A4DFF")
+            s.keylineHex = "FF5A4DFF"
+            s.expandedTitle = "Focus mode"
+            s.expandedSubtitle = "Long-press to start"
+        },
+        make("hydrate", "Hydrate", "drop.fill") { (s: inout IslandState) in
+            s.left = SlotConfig(content: .counter, text: "💧", colorHex: "00C6FFFF")
+            s.right = SlotConfig(content: .ring, colorHex: "00C6FFFF")
+            s.minimal = SlotConfig(content: .symbol, symbol: "drop.fill", colorHex: "00C6FFFF")
+            s.keylineHex = "00C6FFFF"
+            s.expandedTitle = "Stay hydrated"
+            s.expandedSubtitle = "Tap + after each glass"
+        },
+        make("crypto", "Crypto", "bitcoinsign.circle.fill") { (s: inout IslandState) in
+            s.left = SlotConfig(content: .crypto, colorHex: "FFFFFFFF", colorMode: .live)
+            s.right = SlotConfig(content: .clock, colorHex: "FFFFFFFF")
+            s.minimal = SlotConfig(content: .symbol, symbol: "bitcoinsign.circle.fill", colorHex: "F7931AFF")
+            s.keylineHex = "F7931AFF"
+            s.expandedTitle = "Markets"
+        },
+        make("moon", "Moon", "moonphase.full.moon") { (s: inout IslandState) in
+            s.left = SlotConfig(content: .moon, colorHex: "FFE9A8FF")
+            s.right = SlotConfig(content: .clock, colorHex: "FFFFFFFF")
+            s.minimal = SlotConfig(content: .moon, colorHex: "FFE9A8FF")
+            s.keylineHex = "FFE9A8FF"
+            s.lockStyle = .black
+            s.expandedTitle = "Moon phase"
+        },
+        make("worldclock", "World clock", "globe") { (s: inout IslandState) in
+            s.left = SlotConfig(content: .clock, colorHex: "FFFFFFFF")
+            s.right = SlotConfig(content: .worldClock, text: "🌏", colorHex: "64D2FFFF")
+            s.minimal = SlotConfig(content: .symbol, symbol: "globe", colorHex: "64D2FFFF")
+            s.keylineHex = "64D2FFFF"
+            s.expandedTitle = "Two time zones"
+        },
+        make("together", "Together", "heart.circle.fill") { (s: inout IslandState) in
+            s.left = SlotConfig(content: .daysCounter, text: "💜", colorHex: "FF6FA5FF")
+            s.right = SlotConfig(content: .pulse, symbol: "heart.fill", colorHex: "FF2D55FF")
+            s.minimal = SlotConfig(content: .pulse, symbol: "heart.fill", colorHex: "FF2D55FF")
+            s.keylineHex = "FF2D55FF"
+            s.glow = true
+            s.expandedTitle = "Us"
+            s.expandedSubtitle = "Every day counts"
+        },
+        make("quotes", "Quotes", "text.bubble.fill") { (s: inout IslandState) in
+            s.left = SlotConfig(content: .messages, colorHex: "FFFFFFFF", color2Hex: "00E5FFFF", colorMode: .gradient)
+            s.right = SlotConfig(content: .pulse, symbol: "circle.fill", colorHex: "00E5FFFF")
+            s.minimal = SlotConfig(content: .pulse, symbol: "circle.fill", colorHex: "00E5FFFF")
+            s.keylineHex = "00E5FFFF"
+            s.expandedTitle = "Reminder"
+        },
+        make("christmas", "Christmas", "gift.fill") { (s: inout IslandState) in
+            s.left = SlotConfig(content: .emoji, text: "🎄")
+            s.right = SlotConfig(content: .marquee, text: "Merry Christmas", colorHex: "FF3B30FF",
+                                 color2Hex: "34C759FF", colorMode: .gradient)
+            s.minimal = SlotConfig(content: .pulse, symbol: "gift.fill", colorHex: "FF3B30FF")
+            s.keylineHex = "34C759FF"
+            s.glow = true
+            s.expandedTitle = "Happy holidays"
+        },
+        make("valentine", "Valentine", "heart.fill") { (s: inout IslandState) in
+            s.left = SlotConfig(content: .emoji, text: "💘")
+            s.right = SlotConfig(content: .marquee, text: "Be mine", colorHex: "FF2D55FF",
+                                 color2Hex: "FF9ACBFF", colorMode: .gradient)
+            s.minimal = SlotConfig(content: .pulse, symbol: "heart.fill", colorHex: "FF2D55FF")
+            s.keylineHex = "FF2D55FF"
+            s.glow = true
+            s.expandedTitle = "Happy Valentine's"
+        },
+        make("newyear", "New Year", "sparkles") { (s: inout IslandState) in
+            s.left = SlotConfig(content: .emoji, text: "🎆")
+            s.right = SlotConfig(content: .marquee, text: "Happy New Year", colorHex: "FFD700FF",
+                                 color2Hex: "FFFFFFFF", colorMode: .gradient)
+            s.minimal = SlotConfig(content: .rainbow, symbol: "sparkles")
+            s.keylineHex = "FFD700FF"
+            s.glow = true
+            s.expandedTitle = "New year, new you"
+        },
+        make("birthday", "Birthday", "birthday.cake.fill") { (s: inout IslandState) in
+            s.left = SlotConfig(content: .emoji, text: "🎂")
+            s.right = SlotConfig(content: .rainbow, symbol: "sparkles")
+            s.minimal = SlotConfig(content: .rainbow, symbol: "sparkles")
+            s.keylineHex = "FF2D92FF"
+            s.glow = true
+            s.expandedTitle = "Happy birthday!"
+            s.expandedSubtitle = "Make a wish"
         }
     ]
 
-    static let categories = ["Clean", "Neon", "Info", "Music", "Fun", "Vibes", "Seasonal"]
+    static let categories = ["Clean", "Neon", "Info", "Tools", "Music", "Fun", "Vibes", "Seasonal"]
 
     private static let categoryMap: [String: String] = [
         "clean": "Clean", "mono": "Clean", "zen": "Clean", "date": "Clean",
@@ -239,7 +329,10 @@ enum PresetStore {
         "music": "Music", "eq": "Music",
         "rainbow": "Fun", "fire": "Fun", "disco": "Fun", "party": "Fun", "speed": "Fun",
         "sunset": "Vibes", "vapor": "Vibes", "nightowl": "Vibes", "ocean": "Vibes", "gold": "Vibes",
-        "halloween": "Seasonal", "winter": "Seasonal"
+        "halloween": "Seasonal", "winter": "Seasonal", "christmas": "Seasonal", "valentine": "Seasonal",
+        "newyear": "Seasonal", "birthday": "Seasonal",
+        "focus": "Tools", "hydrate": "Tools", "quotes": "Tools",
+        "crypto": "Info", "moon": "Info", "worldclock": "Info", "together": "Vibes"
     ]
 
     static func category(for id: String) -> String {

@@ -13,6 +13,8 @@ struct LiveInfo: Equatable {
     var steps = -1
     var weatherTemp: Int? = nil
     var weatherSymbol = ""
+    var cryptoPrice: Double? = nil
+    var cryptoChange: Double? = nil
 }
 
 // MARK: - Music (built-in Music app only)
@@ -197,6 +199,39 @@ enum WeatherService {
         case 71...77, 85, 86: return "cloud.snow.fill"
         case 95...99: return "cloud.bolt.rain.fill"
         default: return "cloud.fill"
+        }
+    }
+}
+
+// MARK: - Crypto (CoinGecko, free, no key)
+
+enum CryptoService {
+    static let ids: [String: String] = [
+        "BTC": "bitcoin", "ETH": "ethereum", "SOL": "solana", "DOGE": "dogecoin",
+        "XRP": "ripple", "LTC": "litecoin", "ADA": "cardano", "BNB": "binancecoin"
+    ]
+
+    static var symbols: [String] { ids.keys.sorted() }
+
+    struct Reading {
+        let price: Double
+        let change: Double
+    }
+
+    static func fetch(symbol: String) async -> Reading? {
+        guard let id = ids[symbol],
+              let url = URL(string: "https://api.coingecko.com/api/v3/simple/price?ids=\(id)&vs_currencies=usd&include_24hr_change=true") else {
+            return nil
+        }
+        do {
+            let (data, _) = try await URLSession.shared.data(from: url)
+            guard let root = try JSONSerialization.jsonObject(with: data) as? [String: Any],
+                  let coin = root[id] as? [String: Any],
+                  let price = coin["usd"] as? Double else { return nil }
+            let change = coin["usd_24h_change"] as? Double ?? 0
+            return Reading(price: price, change: change)
+        } catch {
+            return nil
         }
     }
 }

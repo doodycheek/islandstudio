@@ -133,7 +133,7 @@ struct PreviewStage: View {
                                     .foregroundStyle(Color.green)
                                     .padding(.leading, 14)
                             }
-                        SlotView(slot: state.minimal, state: state, size: 17)
+                        CompactSlot(slot: state.minimal, state: state, size: 17, minimal: true)
                             .frame(width: 30, height: 30)
                             .background(Circle().fill(Color.black))
                     }
@@ -164,10 +164,10 @@ struct IslandPreview: View {
 
     var body: some View {
         HStack(spacing: 0) {
-            SlotView(slot: state.left, state: state, size: 20)
+            CompactSlot(slot: state.left, state: state, size: 20)
                 .frame(width: 72, alignment: .leading)
             Spacer(minLength: 90)
-            SlotView(slot: state.right, state: state, size: 20)
+            CompactSlot(slot: state.right, state: state, size: 20)
                 .frame(width: 72, alignment: .trailing)
         }
         .padding(.horizontal, 12)
@@ -187,11 +187,13 @@ struct ExpandedPreview: View {
         VStack(spacing: 8) {
             HStack(alignment: .center, spacing: 8) {
                 SlotView(slot: state.left, state: state, size: 30)
+                    .islandPanel(state)
                     .frame(width: 80, alignment: .leading)
                 Spacer(minLength: 0)
                 ExpandedTitle(state: state)
                 Spacer(minLength: 0)
                 SlotView(slot: state.right, state: state, size: 30)
+                    .islandPanel(state)
                     .frame(width: 80, alignment: .trailing)
             }
             ExpandedBottom(state: state)
@@ -290,7 +292,7 @@ struct SlotEditor: View {
                 } header: {
                     Text("Color")
                 } footer: {
-                    Text("Gradient blends the two colors. Cycle switches between them on every animation step.")
+                    Text("Gradient blends the two colors. Cycle switches between them on every step. Live uses natural colors: weather icons show rain or sun, crypto turns green or red, the focus timer changes color by phase.")
                 }
             }
         }
@@ -299,6 +301,10 @@ struct SlotEditor: View {
         .navigationBarTitleDisplayMode(.inline)
         .pinnedPreview(music: music)
         .onAppear { previewMode = PreviewMode.island.rawValue }
+        .onChange(of: slot.content) { _, newValue in
+            // Weather and crypto look best in their natural, live colors.
+            if newValue == .weather || newValue == .crypto { slot.colorMode = .live }
+        }
     }
 
     private func colorBinding(_ keyPath: WritableKeyPath<SlotConfig, String>) -> Binding<Color> {

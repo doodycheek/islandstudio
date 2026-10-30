@@ -2,6 +2,12 @@
 
 Customizes the Dynamic Island with a Live Activity, plus a background keep-alive so animations keep running.
 
+## v1.4
+- Previews no longer show the charging layout; charging look is now optional
+- Real battery glyph (green charging, red low), live weather icons in natural colors
+- Island background (tint / gradient), tap counter, focus timer, days counter, moon, crypto, world clock, rotating messages
+- Low battery + headphone pop-outs, holiday and birthday presets, Island Clock home screen widget, backup code
+
 ## v1.3
 - New app layout: Studio / Presets / Settings tabs with card-style screens
 - Preview tabs now control which settings you see (Island, Expanded, Lock Screen)

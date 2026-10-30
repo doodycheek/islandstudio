@@ -6,6 +6,13 @@ import SwiftUI
 import UIKit
 import UserNotifications
 
+/// Everything the Backup button saves and restores.
+struct BackupData: Codable {
+    var config: IslandState
+    var settings: AppSettings
+    var presets: [SavedPreset]
+}
+
 @MainActor
 final class IslandManager: ObservableObject {
     static let shared = IslandManager()
@@ -28,6 +35,11 @@ final class IslandManager: ObservableObject {
                 || oldValue.latitude != settings.latitude
                 || oldValue.longitude != settings.longitude {
                 lastWeatherFetch = nil
+            }
+            if oldValue.cryptoCoin != settings.cryptoCoin {
+                lastCryptoFetch = nil
+                info.cryptoPrice = nil
+                info.cryptoChange = nil
             }
             saveSettings()
             configChanged()
@@ -91,20 +103,31 @@ final class IslandManager: ObservableObject {
     private var lastChimeHour = -1
     private var bannerText = ""
     private var bannerUntil: Date?
+    private var pendingBanner: String?
     private var lastPush = Date.distantPast
     private var lastScheduleKey = ""
+    private var lastHolidayKey = ""
     private var lastStepsFetch: Date?
     private var lastWeatherFetch: Date?
+    private var lastCryptoFetch: Date?
     private var stepsInFlight = false
     private var weatherInFlight = false
+    private var cryptoInFlight = false
     private var triedAutoLocation = false
     private var musicSeenSince: Date?
     private var musicGoneSince: Date?
+    private var lowNotified = 100
 
     private let musicWatcher = MusicWatcher()
     private let stepsWatcher = StepsWatcher()
     private let locationFetcher = LocationFetcher()
     private let callObserver = CXCallObserver()
+
+    private static let dayFormatter: DateFormatter = {
+        let f = DateFormatter()
+        f.dateFormat = "yyyy-MM-dd"
+        return f
+    }()
 
     private enum Keys {
         static let config = "islandConfig"
@@ -114,6 +137,7 @@ final class IslandManager: ObservableObject {
         static let cycleLength = "cycleLength"
         static let wantsRunning = "wantsRunning"
         static let scheduleKey = "lastScheduleKey"
+        static let holidayKey = "lastHolidayKey"
     }
 
     private init() {
@@ -127,10 +151,18 @@ final class IslandManager: ObservableObject {
         let cl = d.double(forKey: Keys.cycleLength)
         cycleLength = cl > 0 ? cl : 3.0
         lastScheduleKey = d.string(forKey: Keys.scheduleKey) ?? ""
+        lastHolidayKey = d.string(forKey: Keys.holidayKey) ?? ""
         UIDevice.current.isBatteryMonitoringEnabled = true
         wasCharging = batteryInfo().charging
         reattach()
         startLoop()
+
+        // Headphones / Bluetooth connecting.
+        NotificationCenter.default.addObserver(forName: AVAudioSession.routeChangeNotification,
+                                               object: nil, queue: .main) { [weak self] note in
+            let raw = note.userInfo?[AVAudioSessionRouteChangeReasonKey] as? UInt
+            Task { @MainActor in self?.routeChanged(reasonRaw: raw) }
+        }
     }
 
     private static func load<T: Decodable>(_ type: T.Type, key: String) -> T? {
@@ -245,6 +277,38 @@ final class IslandManager: ObservableObject {
         status = "Added \(preset.name)"
     }
 
+    // MARK: - Backup
+
+    func copyBackup() {
+        var exported = settings
+        exported.latitude = nil
+        exported.longitude = nil
+        let backup = BackupData(config: config.styleOnly(), settings: exported, presets: savedPresets)
+        guard let json = try? JSONEncoder().encode(backup) else {
+            status = "Couldn't create a backup"
+            return
+        }
+        UIPasteboard.general.string = "ISB1:" + json.base64EncodedString()
+        status = "Backup copied to the clipboard"
+    }
+
+    func restoreBackupFromClipboard() {
+        let text = (UIPasteboard.general.string ?? "").trimmingCharacters(in: .whitespacesAndNewlines)
+        guard text.hasPrefix("ISB1:"),
+              let data = Data(base64Encoded: String(text.dropFirst(5))),
+              let backup = try? JSONDecoder().decode(BackupData.self, from: data) else {
+            status = "No backup code on the clipboard"
+            return
+        }
+        var restored = backup.settings
+        restored.latitude = settings.latitude
+        restored.longitude = settings.longitude
+        config = backup.config
+        settings = restored
+        savedPresets = backup.presets
+        status = "Backup restored"
+    }
+
     // MARK: - Commands from island buttons and Shortcuts
 
     func handle(_ command: IslandCommand) async {
@@ -252,8 +316,37 @@ final class IslandManager: ObservableObject {
         case .next: stepPreset(by: 1)
         case .previous: stepPreset(by: -1)
         case .togglePause: paused.toggle()
+        case .counterUp:
+            settings.counter += 1
+            if settings.counterGoal > 0 && settings.counter == settings.counterGoal {
+                queueBanner("Goal reached 🎉")
+            }
+        case .counterDown:
+            settings.counter = max(0, settings.counter - 1)
+        case .counterReset:
+            settings.counter = 0
+        case .togglePomodoro:
+            togglePomodoro()
         }
         await pushUpdate()
+    }
+
+    func togglePomodoro() {
+        if settings.pomoPhase.isEmpty {
+            startPhase("focus", minutes: settings.focusMinutes, now: Date())
+            status = "Focus started"
+        } else {
+            settings.pomoPhase = ""
+            status = "Timer stopped"
+        }
+    }
+
+    private func startPhase(_ phase: String, minutes: Int, now: Date) {
+        var s = settings
+        s.pomoPhase = phase
+        s.pomoStart = now
+        s.pomoEnd = now.addingTimeInterval(Double(max(1, minutes)) * 60)
+        settings = s
     }
 
     // MARK: - Live info actions
@@ -269,6 +362,11 @@ final class IslandManager: ObservableObject {
         } else {
             status = "Couldn't get location. Check Settings → Island Studio → Location."
         }
+    }
+
+    func refreshWeatherNow() {
+        lastWeatherFetch = nil
+        status = "Refreshing weather…"
     }
 
     func requestMusicAccess() {
@@ -305,21 +403,22 @@ final class IslandManager: ObservableObject {
 
     // MARK: - Previews
 
-    /// What the island looks like right now, animated, for the in-app preview.
+    /// What your chosen style looks like right now, animated. Previews never apply
+    /// temporary takeovers (like charging), so you always see the style you're editing.
+    /// `music: true` shows the music layout instead.
     func previewState(at date: Date, music: Bool = false) -> IslandState {
         let step = max(0.5, frameInterval)
         let length = max(1, cycleLength)
         let start = Date(timeIntervalSince1970: floor(date.timeIntervalSince1970 / length) * length)
         let previewFrame = paused ? frame : Int(date.timeIntervalSince1970 / step)
         return compose(base: config, now: date, frame: previewFrame, cycleStart: start, cycleLength: length,
-                       sessionStart: isRunning ? activityStart : date, budget: false, overrides: true,
-                       forceMusic: music)
+                       sessionStart: isRunning ? activityStart : date, budget: false, live: false, forceMusic: music)
     }
 
     /// A still snapshot of any style, for preset tiles.
     func previewState(style: IslandState, at date: Date) -> IslandState {
         compose(base: style, now: date, frame: 0, cycleStart: date.addingTimeInterval(-1), cycleLength: 3,
-                sessionStart: date, budget: false, overrides: false)
+                sessionStart: date, budget: false, live: false, forceMusic: false)
     }
 
     // MARK: - Internals
@@ -347,8 +446,7 @@ final class IslandManager: ObservableObject {
     }
 
     private func compose(base: IslandState, now: Date, frame: Int, cycleStart: Date, cycleLength: Double,
-                         sessionStart: Date, budget: Bool, overrides: Bool,
-                         forceMusic: Bool = false) -> IslandState {
+                         sessionStart: Date, budget: Bool, live: Bool, forceMusic: Bool) -> IslandState {
         var s = base
         let battery = batteryInfo()
 
@@ -384,12 +482,40 @@ final class IslandManager: ObservableObject {
         s.weatherTemp = info.weatherTemp
         s.weatherSymbol = info.weatherSymbol
 
-        // Temporary takeovers
-        if overrides {
-            if settings.musicMode == .showMusic && (musicActive || forceMusic) {
-                applyMusicLayout(to: &s)
-            } else if settings.chargingMode && battery.charging {
-                s.applyChargingStyle()
+        // Temporary takeovers (real island only, except the music preview)
+        if forceMusic || (live && settings.musicMode == .showMusic && musicActive) {
+            applyMusicLayout(to: &s)
+        } else if live && settings.chargingTakeover && battery.charging {
+            s.applyChargingStyle()
+        }
+        if live && settings.lowBatteryAlert && !battery.charging && battery.level >= 0 && battery.level <= 20 {
+            s.keylineHex = "FF3B30FF"
+        }
+
+        // Tools
+        s.counter = settings.counter
+        s.counterGoal = settings.counterGoal
+        s.showCounterButtons = settings.counterButtons && s.uses(.counter)
+        s.showTimerButton = s.uses(.pomodoro)
+        s.pomoPhase = settings.pomoPhase
+        s.pomoStart = settings.pomoStart
+        s.pomoEnd = settings.pomoEnd
+        s.daysSince = settings.daysSince
+        s.worldTZ = settings.worldTZ
+        if s.uses(.crypto) {
+            s.cryptoSymbol = settings.cryptoCoin
+            s.cryptoPrice = info.cryptoPrice
+            s.cryptoChange = info.cryptoChange
+        }
+        if s.uses(.messages) {
+            let lines = settings.messagesText
+                .split(whereSeparator: { $0.isNewline })
+                .map { String($0).trimmingCharacters(in: .whitespaces) }
+                .filter { !$0.isEmpty }
+            if !lines.isEmpty {
+                let step = max(2.0, settings.messageSeconds)
+                let index = Int(now.timeIntervalSince1970 / step) % lines.count
+                s.rotatingText = String(lines[index].prefix(40))
             }
         }
 
@@ -413,7 +539,7 @@ final class IslandManager: ObservableObject {
 
     private func liveState(now: Date = Date()) -> IslandState {
         compose(base: config, now: now, frame: frame, cycleStart: cycleStart, cycleLength: max(1, cycleLength),
-                sessionStart: activityStart, budget: true, overrides: true)
+                sessionStart: activityStart, budget: true, live: true, forceMusic: false)
     }
 
     /// The heartbeat. Runs whenever the app process is alive (foreground, or kept alive in background).
@@ -434,6 +560,10 @@ final class IslandManager: ObservableObject {
         refreshInfo(now: now)
         updateMusicDetection(now: now)
         checkSchedule(now: now)
+        checkHoliday(now: now)
+        dailyCounterReset(now: now)
+        checkPomodoro(now: now)
+        checkLowBattery()
         await syncMusicHide()
 
         guard isRunning, !waitingForForeground, !isHiddenForMusic, let current = activity else { return }
@@ -461,6 +591,12 @@ final class IslandManager: ObservableObject {
         if settings.hourlyPopOut, let chime = hourlyChimeText(now) {
             setBanner(chime, now: now)
             alert = makeAlert(chime)
+        }
+
+        if let text = pendingBanner {
+            pendingBanner = nil
+            setBanner(text, now: now)
+            alert = makeAlert(text)
         }
 
         if let until = bannerUntil, now > until {
@@ -524,6 +660,20 @@ final class IslandManager: ObservableObject {
                 self.weatherInFlight = false
             }
         }
+
+        if config.uses(.crypto), !cryptoInFlight,
+           lastCryptoFetch.map({ now.timeIntervalSince($0) > 60 }) ?? true {
+            cryptoInFlight = true
+            lastCryptoFetch = now
+            let coin = settings.cryptoCoin
+            Task {
+                if let reading = await CryptoService.fetch(symbol: coin) {
+                    self.info.cryptoPrice = reading.price
+                    self.info.cryptoChange = reading.change
+                }
+                self.cryptoInFlight = false
+            }
+        }
     }
 
     // MARK: Music detection
@@ -569,11 +719,99 @@ final class IslandManager: ObservableObject {
         }
     }
 
-    // MARK: Schedule, pop-outs
+    // MARK: Smart pop-outs
+
+    private func queueBanner(_ text: String) {
+        guard isRunning, !isHiddenForMusic else { return }
+        pendingBanner = text
+    }
+
+    private func checkLowBattery() {
+        guard settings.lowBatteryAlert else { return }
+        let battery = batteryInfo()
+        guard battery.level >= 0 else { return }
+        if battery.charging || battery.level > 20 {
+            lowNotified = 100
+            return
+        }
+        if battery.level <= 10 && lowNotified > 10 {
+            lowNotified = 10
+            queueBanner("Battery \(battery.level)%")
+        } else if battery.level <= 20 && lowNotified > 20 {
+            lowNotified = 20
+            queueBanner("Low battery · \(battery.level)%")
+        }
+    }
+
+    private func routeChanged(reasonRaw: UInt?) {
+        guard settings.headphonesPopOut, isRunning, !isHiddenForMusic,
+              let raw = reasonRaw,
+              AVAudioSession.RouteChangeReason(rawValue: raw) == .newDeviceAvailable else { return }
+        let kinds: [AVAudioSession.Port] = [.headphones, .bluetoothA2DP, .bluetoothHFP, .bluetoothLE]
+        if let output = AVAudioSession.sharedInstance().currentRoute.outputs.first(where: { kinds.contains($0.portType) }) {
+            queueBanner("🎧 \(output.portName)")
+        }
+    }
+
+    private func checkPomodoro(now: Date) {
+        guard !settings.pomoPhase.isEmpty, now >= settings.pomoEnd else { return }
+        if settings.pomoPhase == "focus" {
+            startPhase("break", minutes: settings.breakMinutes, now: now)
+            queueBanner("Break time ☕")
+        } else {
+            startPhase("focus", minutes: settings.focusMinutes, now: now)
+            queueBanner("Focus time 🍅")
+        }
+    }
+
+    private func dailyCounterReset(now: Date) {
+        guard settings.counterResetsDaily else { return }
+        let day = Self.dayFormatter.string(from: now)
+        guard settings.counterDay != day else { return }
+        var s = settings
+        if !s.counterDay.isEmpty { s.counter = 0 }
+        s.counterDay = day
+        settings = s
+    }
+
+    // MARK: Schedule, holidays, hourly
+
+    /// The holiday or birthday preset for today, if the matching switch is on.
+    private func holidayPresetID(for now: Date) -> String? {
+        let cal = Calendar.current
+        let c = cal.dateComponents([.month, .day], from: now)
+        guard let month = c.month, let day = c.day else { return nil }
+        if settings.birthdayEnabled {
+            let b = cal.dateComponents([.month, .day], from: settings.birthday)
+            if b.month == month && b.day == day { return "birthday" }
+        }
+        if settings.holidayAuto {
+            switch (month, day) {
+            case (10, 24...31): return "halloween"
+            case (12, 20...26): return "christmas"
+            case (12, 31), (1, 1...2): return "newyear"
+            case (2, 10...14): return "valentine"
+            default: break
+            }
+        }
+        return nil
+    }
+
+    private func checkHoliday(now: Date) {
+        guard let id = holidayPresetID(for: now) else { return }
+        let c = Calendar.current.dateComponents([.month, .day], from: now)
+        let key = "\(id)@\(c.month ?? 0)-\(c.day ?? 0)"
+        guard key != lastHolidayKey else { return }
+        lastHolidayKey = key
+        UserDefaults.standard.set(key, forKey: Keys.holidayKey)
+        applyPreset(id: id)
+    }
 
     private func checkSchedule(now: Date) {
         let schedule = settings.schedule
         guard schedule.enabled, !schedule.blocks.isEmpty else { return }
+        // A holiday or birthday preset wins for the day.
+        if holidayPresetID(for: now) != nil { return }
         let cal = Calendar.current
         let comps = cal.dateComponents([.hour, .minute], from: now)
         let nowMinute = (comps.hour ?? 0) * 60 + (comps.minute ?? 0)
