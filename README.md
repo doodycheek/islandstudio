@@ -2,6 +2,13 @@
 
 Customizes the Dynamic Island with a Live Activity, plus a background keep-alive so animations keep running.
 
+## v1.5
+- Default preset, Save as new / Update / Duplicate / Favorites / Surprise me
+- Colors: accent synced to time of day, battery, weather or album art; slots that follow the accent; palettes; colors from a photo; app theme can match the island
+- Per-slot size, nudge, shape, 3-color gradients with angle, motion (bounce, wiggle, float, flip...), font weight/width/spacing, glow strength
+- Rules ("if raining → preset") and shuffle, custom long-press buttons incl. Apple Music controls, photo slideshow
+- Expanded: layouts, title color and icon. Lock Screen: gradient/custom backgrounds, badge styles, chip picker, progress bar styles
+
 ## v1.4
 - Previews no longer show the charging layout; charging look is now optional
 - Real battery glyph (green charging, red low), live weather icons in natural colors

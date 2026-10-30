@@ -4,6 +4,7 @@ import AppIntents
 enum IslandCommand: Sendable {
     case next, previous, togglePause
     case counterUp, counterDown, counterReset, togglePomodoro
+    case musicPlayPause, musicNext, musicPrevious, surprise
 }
 
 // These intents are compiled into both the app and the widget (the widget needs them for its buttons),
@@ -88,6 +89,62 @@ struct PomodoroToggleIntent: LiveActivityIntent {
     func perform() async throws -> some IntentResult {
         #if ISLAND_APP
         await IslandManager.shared.handle(.togglePomodoro)
+        #endif
+        return .result()
+    }
+}
+
+struct MusicPlayPauseIntent: LiveActivityIntent {
+    static var title: LocalizedStringResource = "Play or Pause Music"
+    static var description: IntentDescription = IntentDescription("Plays or pauses the Music app.")
+
+    init() {}
+
+    func perform() async throws -> some IntentResult {
+        #if ISLAND_APP
+        await IslandManager.shared.handle(.musicPlayPause)
+        #endif
+        return .result()
+    }
+}
+
+struct MusicNextIntent: LiveActivityIntent {
+    static var title: LocalizedStringResource = "Next Song"
+    static var description: IntentDescription = IntentDescription("Skips to the next song in the Music app.")
+
+    init() {}
+
+    func perform() async throws -> some IntentResult {
+        #if ISLAND_APP
+        await IslandManager.shared.handle(.musicNext)
+        #endif
+        return .result()
+    }
+}
+
+struct MusicPreviousIntent: LiveActivityIntent {
+    static var title: LocalizedStringResource = "Previous Song"
+    static var description: IntentDescription = IntentDescription("Goes back a song in the Music app.")
+
+    init() {}
+
+    func perform() async throws -> some IntentResult {
+        #if ISLAND_APP
+        await IslandManager.shared.handle(.musicPrevious)
+        #endif
+        return .result()
+    }
+}
+
+struct SurpriseIntent: LiveActivityIntent {
+    static var title: LocalizedStringResource = "Surprise Island Preset"
+    static var description: IntentDescription = IntentDescription("Switches the island to a random preset.")
+
+    init() {}
+
+    func perform() async throws -> some IntentResult {
+        #if ISLAND_APP
+        await IslandManager.shared.handle(.surprise)
         #endif
         return .result()
     }

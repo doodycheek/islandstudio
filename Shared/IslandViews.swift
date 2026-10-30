@@ -74,11 +74,22 @@ struct LockScreenView: View {
 
     private var accent: Color { state.accentColor }
 
+    private var titleColor: Color {
+        state.lockTitleHex.isEmpty ? Color.white : Color(hex: state.lockTitleHex)
+    }
+
     var body: some View {
-        switch state.lockLayout {
-        case .classic: classic
-        case .compact: compact
-        case .hero: hero
+        Group {
+            switch state.lockLayout {
+            case .classic: classic
+            case .compact: compact
+            case .hero: hero
+            }
+        }
+        .background {
+            if let colors = state.lockGradientColors {
+                LinearGradient(colors: colors, startPoint: .topLeading, endPoint: .bottomTrailing)
+            }
         }
     }
 
@@ -100,11 +111,17 @@ struct LockScreenView: View {
     private var compact: some View {
         HStack(spacing: 10) {
             SlotBadge(slot: state.left, state: state, accent: accent, diameter: 36)
-            Text(state.lockTitleText)
-                .font(.system(size: 15, weight: .semibold))
-                .fontDesign(state.design)
-                .lineLimit(1)
-                .minimumScaleFactor(0.8)
+            HStack(spacing: 6) {
+                if !state.lockIcon.isEmpty {
+                    Image(systemName: state.lockIcon).foregroundStyle(accent)
+                }
+                Text(state.lockTitleText)
+                    .foregroundStyle(titleColor)
+            }
+            .font(.system(size: 15, weight: .semibold))
+            .fontDesign(state.design)
+            .lineLimit(1)
+            .minimumScaleFactor(0.8)
             Spacer(minLength: 4)
             SlotBadge(slot: state.right, state: state, accent: accent, diameter: 36)
         }
@@ -130,8 +147,15 @@ struct LockScreenView: View {
 
     private func titles(titleSize: CGFloat, subtitleSize: CGFloat) -> some View {
         VStack(alignment: .leading, spacing: 2) {
-            Text(state.lockTitleText)
-                .font(.system(size: titleSize, weight: .bold))
+            HStack(spacing: 6) {
+                if !state.lockIcon.isEmpty {
+                    Image(systemName: state.lockIcon)
+                        .foregroundStyle(accent)
+                }
+                Text(state.lockTitleText)
+                    .foregroundStyle(titleColor)
+            }
+            .font(.system(size: titleSize, weight: .bold))
             if !state.lockSubtitleText.isEmpty {
                 Text(state.lockSubtitleText)
                     .font(.system(size: subtitleSize))
@@ -144,7 +168,7 @@ struct LockScreenView: View {
     }
 }
 
-/// Wraps a slot for the Lock Screen: a round badge for icons, a pill for text.
+/// Wraps a slot for the Lock Screen: a badge for icons, a pill for text.
 struct SlotBadge: View {
     let slot: SlotConfig
     let state: IslandState
@@ -155,19 +179,39 @@ struct SlotBadge: View {
         if slot.content == .empty {
             EmptyView()
         } else if slot.content.isIconLike {
-            SlotView(slot: slot, state: state, size: diameter * 0.56)
+            SlotView(slot: slot, state: state, size: diameter * 0.56, decorated: false)
                 .frame(width: diameter, height: diameter)
-                .background(Circle().fill(accent.opacity(0.18)))
-                .overlay(Circle().strokeBorder(accent.opacity(0.35), lineWidth: 1))
+                .background { badgeBackground }
         } else {
-            SlotView(slot: slot, state: state, size: diameter * 0.48)
+            SlotView(slot: slot, state: state, size: diameter * 0.48, decorated: false)
                 .padding(.horizontal, diameter * 0.26)
                 .frame(height: diameter * 0.87)
-                .background(Capsule().fill(Color.white.opacity(0.10)))
+                .background {
+                    if state.badgeStyle != .none {
+                        Capsule().fill(Color.white.opacity(0.10))
+                    }
+                }
+        }
+    }
+
+    @ViewBuilder private var badgeBackground: some View {
+        switch state.badgeStyle {
+        case .circle:
+            Circle()
+                .fill(accent.opacity(0.18))
+                .overlay(Circle().strokeBorder(accent.opacity(0.35), lineWidth: 1))
+        case .squircle:
+            RoundedRectangle(cornerRadius: diameter * 0.3, style: .continuous)
+                .fill(accent.opacity(0.18))
+                .overlay(RoundedRectangle(cornerRadius: diameter * 0.3, style: .continuous)
+                    .strokeBorder(accent.opacity(0.35), lineWidth: 1))
+        case .none:
+            EmptyView()
         }
     }
 }
 
+/// Progress bar: loops, fills through the day, shows battery, or counter progress.
 struct AccentBar: View {
     let state: IslandState
 
@@ -175,34 +219,106 @@ struct AccentBar: View {
         state.cycleStart...max(state.cycleEnd, state.cycleStart.addingTimeInterval(1))
     }
 
+    private var dayRange: ClosedRange<Date> {
+        let start = Calendar.current.startOfDay(for: state.now)
+        return start...start.addingTimeInterval(86_400)
+    }
+
+    private var barColor: Color {
+        state.lockBarStyle == .battery
+            ? BatteryGlyph.autoColor(level: state.battery, charging: state.charging, normal: state.accentColor)
+            : state.accentColor
+    }
+
     var body: some View {
-        ProgressView(timerInterval: cycleRange, countsDown: false) {
-            EmptyView()
-        } currentValueLabel: {
-            EmptyView()
+        Group {
+            switch state.lockBarStyle {
+            case .loop:
+                ProgressView(timerInterval: cycleRange, countsDown: false) {
+                    EmptyView()
+                } currentValueLabel: {
+                    EmptyView()
+                }
+            case .day:
+                ProgressView(timerInterval: dayRange, countsDown: false) {
+                    EmptyView()
+                } currentValueLabel: {
+                    EmptyView()
+                }
+            case .battery:
+                ProgressView(value: Double(max(state.battery, 0)) / 100)
+            case .counter:
+                ProgressView(value: state.counterGoal > 0
+                             ? min(1, Double(state.counter) / Double(state.counterGoal)) : 0)
+            }
         }
         .progressViewStyle(.linear)
-        .tint(state.accentColor)
+        .tint(barColor)
     }
 }
 
+/// The chips you picked, in the order you picked them. Chips without data yet are skipped.
 struct InfoChipRow: View {
     let state: IslandState
 
+    private var countdownText: String {
+        let remaining = state.countdownTarget.timeIntervalSince(state.now)
+        if remaining <= 0 { return "Now" }
+        let total = Int(remaining)
+        if total >= 86_400 { return "\(total / 86_400)d" }
+        return "\(total / 3600)h \((total % 3600) / 60)m"
+    }
+
+    private var focusText: String {
+        let minutes = max(0, Int(ceil(state.pomoEnd.timeIntervalSince(state.now) / 60)))
+        return (state.pomoPhase == "break" ? "☕ " : "🍅 ") + "\(minutes)m"
+    }
+
     var body: some View {
         HStack(spacing: 6) {
+            ForEach(state.chipKinds, id: \.self) { raw in
+                if let kind = ChipKind(rawValue: raw) {
+                    chip(kind)
+                }
+            }
+            Spacer(minLength: 0)
+        }
+    }
+
+    @ViewBuilder private func chip(_ kind: ChipKind) -> some View {
+        switch kind {
+        case .battery:
             if state.battery >= 0 {
                 BatteryChip(level: state.battery, charging: state.charging)
             }
+        case .weather:
             if let temp = state.weatherTemp {
                 InfoChip(icon: state.weatherSymbol.isEmpty ? "cloud.sun.fill" : state.weatherSymbol,
                          text: "\(temp)°", multicolor: true)
             }
+        case .steps:
             if state.steps >= 0 {
                 InfoChip(icon: "figure.walk", text: state.steps.formatted())
             }
+        case .date:
             InfoChip(icon: "calendar", text: state.now.formatted(.dateTime.weekday(.abbreviated).day()))
-            Spacer(minLength: 0)
+        case .moon:
+            let phase = MoonPhase.info(for: state.now)
+            InfoChip(icon: phase.symbol, text: "\(phase.percent)%")
+        case .counter:
+            InfoChip(icon: "plus.circle.fill",
+                     text: state.counterGoal > 0 ? "\(state.counter)/\(state.counterGoal)" : "\(state.counter)")
+        case .crypto:
+            if state.cryptoPrice != nil {
+                InfoChip(icon: "bitcoinsign.circle.fill",
+                         text: "\(state.cryptoSymbol) \(CryptoFormat.price(state.cryptoPrice))")
+            }
+        case .countdown:
+            InfoChip(icon: "hourglass", text: countdownText)
+        case .focus:
+            if !state.pomoPhase.isEmpty {
+                InfoChip(icon: "timer", text: focusText)
+            }
         }
     }
 }
@@ -252,19 +368,72 @@ struct BatteryChip: View {
 struct ExpandedTitle: View {
     let state: IslandState
 
-    var body: some View {
-        Group {
-            if state.bannerText.isEmpty {
-                Text(state.expandedTitle)
-                    .font(.headline)
-            } else {
-                Text(state.bannerText)
-                    .font(.title3.weight(.bold))
-            }
+    private var titleFont: Font {
+        if !state.bannerText.isEmpty { return .title3.weight(.bold) }
+        switch state.expandedLayout {
+        case .standard: return .headline
+        case .centered: return .title2.weight(.bold)
+        case .big: return .subheadline.weight(.semibold)
         }
+    }
+
+    private var titleColor: Color {
+        state.expandedTitleHex.isEmpty ? Color.white : Color(hex: state.expandedTitleHex)
+    }
+
+    var body: some View {
+        HStack(spacing: 6) {
+            if !state.expandedIcon.isEmpty && state.bannerText.isEmpty {
+                Image(systemName: state.expandedIcon)
+                    .foregroundStyle(state.accentColor)
+            }
+            Text(state.bannerText.isEmpty ? state.expandedTitle : state.bannerText)
+                .foregroundStyle(titleColor)
+        }
+        .font(titleFont)
         .fontDesign(state.design)
         .lineLimit(1)
         .minimumScaleFactor(0.7)
+    }
+}
+
+/// One of the buttons you picked for the long-press view.
+struct IslandButton: View {
+    let kind: ButtonKind
+    let state: IslandState
+
+    private var icon: String {
+        switch kind {
+        case .pause: return state.paused ? "play.circle.fill" : "pause.circle.fill"
+        case .musicPlayPause: return state.musicPlaying ? "pause.fill" : "play.fill"
+        case .focus: return state.pomoPhase.isEmpty ? "timer" : "stop.circle.fill"
+        default: return kind.icon
+        }
+    }
+
+    var body: some View {
+        switch kind {
+        case .prev:
+            Button(intent: PreviousPresetIntent()) { Image(systemName: icon) }
+        case .next:
+            Button(intent: NextPresetIntent()) { Image(systemName: icon) }
+        case .pause:
+            Button(intent: TogglePauseIntent()) { Image(systemName: icon) }
+        case .counterPlus:
+            Button(intent: CounterPlusIntent()) { Image(systemName: icon) }
+        case .counterMinus:
+            Button(intent: CounterMinusIntent()) { Image(systemName: icon) }
+        case .focus:
+            Button(intent: PomodoroToggleIntent()) { Image(systemName: icon) }
+        case .musicPrevious:
+            Button(intent: MusicPreviousIntent()) { Image(systemName: icon) }
+        case .musicPlayPause:
+            Button(intent: MusicPlayPauseIntent()) { Image(systemName: icon) }
+        case .musicNext:
+            Button(intent: MusicNextIntent()) { Image(systemName: icon) }
+        case .surprise:
+            Button(intent: SurpriseIntent()) { Image(systemName: icon) }
+        }
     }
 }
 
@@ -305,7 +474,7 @@ struct ExpandedBottom: View {
                 .buttonStyle(.plain)
                 .foregroundStyle(state.accentColor)
             }
-            if state.showTimerButton {
+            if state.showTimerButton && !state.buttonKinds.contains(ButtonKind.focus.rawValue) {
                 Button(intent: PomodoroToggleIntent()) {
                     Label(state.pomoPhase.isEmpty ? "Start focus" : "Stop timer",
                           systemImage: state.pomoPhase.isEmpty ? "play.fill" : "stop.fill")
@@ -317,16 +486,12 @@ struct ExpandedBottom: View {
                 .buttonStyle(.plain)
                 .foregroundStyle(.white)
             }
-            if state.showButtons {
-                HStack(spacing: 28) {
-                    Button(intent: PreviousPresetIntent()) {
-                        Image(systemName: "chevron.left.circle.fill")
-                    }
-                    Button(intent: TogglePauseIntent()) {
-                        Image(systemName: state.paused ? "play.circle.fill" : "pause.circle.fill")
-                    }
-                    Button(intent: NextPresetIntent()) {
-                        Image(systemName: "chevron.right.circle.fill")
+            if state.showButtons && state.buttonKinds.contains(where: { ButtonKind(rawValue: $0) != nil }) {
+                HStack(spacing: 26) {
+                    ForEach(state.buttonKinds, id: \.self) { raw in
+                        if let kind = ButtonKind(rawValue: raw) {
+                            IslandButton(kind: kind, state: state)
+                        }
                     }
                 }
                 .font(.title2)

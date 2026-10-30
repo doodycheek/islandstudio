@@ -36,6 +36,11 @@ final class IslandManager: ObservableObject {
                 || oldValue.longitude != settings.longitude {
                 lastWeatherFetch = nil
             }
+            if oldValue.shuffleEnabled != settings.shuffleEnabled
+                || oldValue.shuffleMinutes != settings.shuffleMinutes
+                || oldValue.shuffleSource != settings.shuffleSource {
+                lastShuffle = nil
+            }
             if oldValue.cryptoCoin != settings.cryptoCoin {
                 lastCryptoFetch = nil
                 info.cryptoPrice = nil
@@ -89,6 +94,8 @@ final class IslandManager: ObservableObject {
     @Published private(set) var isHiddenForMusic = false
     @Published private(set) var musicActive = false
     @Published private(set) var info = LiveInfo()
+    /// What's temporarily overriding your style (a rule or shuffle), shown in the preview header.
+    @Published private(set) var takeoverLabel = ""
 
     // MARK: - Private state
 
@@ -117,6 +124,12 @@ final class IslandManager: ObservableObject {
     private var musicSeenSince: Date?
     private var musicGoneSince: Date?
     private var lowNotified = 100
+    private var takeoverStyle: IslandState?
+    private var shuffleStyle: IslandState?
+    private var shuffleName = ""
+    private var lastShuffle: Date?
+    private var albumAccentHex: String?
+    private var lastHolidayPresetID = ""
 
     private let musicWatcher = MusicWatcher()
     private let stepsWatcher = StepsWatcher()
@@ -138,6 +151,7 @@ final class IslandManager: ObservableObject {
         static let wantsRunning = "wantsRunning"
         static let scheduleKey = "lastScheduleKey"
         static let holidayKey = "lastHolidayKey"
+        static let holidayPresetKey = "lastHolidayPresetID"
     }
 
     private init() {
@@ -152,6 +166,7 @@ final class IslandManager: ObservableObject {
         cycleLength = cl > 0 ? cl : 3.0
         lastScheduleKey = d.string(forKey: Keys.scheduleKey) ?? ""
         lastHolidayKey = d.string(forKey: Keys.holidayKey) ?? ""
+        lastHolidayPresetID = d.string(forKey: Keys.holidayPresetKey) ?? ""
         UIDevice.current.isBatteryMonitoringEnabled = true
         wasCharging = batteryInfo().charging
         reattach()
@@ -261,6 +276,101 @@ final class IslandManager: ObservableObject {
 
     func deletePreset(id: String) {
         savedPresets.removeAll { $0.id == id }
+        var s = settings
+        if s.defaultPresetID == id { s.defaultPresetID = "neon" }
+        s.favoriteIDs.removeAll { $0 == id }
+        settings = s
+    }
+
+    /// Every preset, built-in first.
+    var allPresets: [SavedPreset] { PresetStore.builtIns + savedPresets }
+
+    private func findPreset(_ id: String) -> SavedPreset? {
+        allPresets.first { $0.id == id }
+    }
+
+    var currentPreset: SavedPreset? { findPreset(settings.currentPresetID) }
+
+    /// True when you've edited a saved preset of yours and haven't saved the changes.
+    var hasUnsavedChanges: Bool {
+        guard let preset = savedPresets.first(where: { $0.id == settings.currentPresetID }) else { return false }
+        return !config.matchesStyle(preset.style)
+    }
+
+    func isFavorite(_ id: String) -> Bool { settings.favoriteIDs.contains(id) }
+
+    func toggleFavorite(_ id: String) {
+        if let index = settings.favoriteIDs.firstIndex(of: id) {
+            settings.favoriteIDs.remove(at: index)
+        } else {
+            settings.favoriteIDs.append(id)
+        }
+    }
+
+    func setDefault(_ preset: SavedPreset) {
+        settings.defaultPresetID = preset.id
+        status = "\(preset.name) is now your default"
+    }
+
+    func applyDefault() {
+        if let preset = findPreset(settings.defaultPresetID) {
+            apply(preset)
+            status = "Back to \(preset.name)"
+        }
+    }
+
+    func updatePreset(id: String) {
+        guard let index = savedPresets.firstIndex(where: { $0.id == id }) else { return }
+        savedPresets[index].style = config.styleOnly()
+        status = "Updated \(savedPresets[index].name)"
+    }
+
+    func duplicatePreset(_ preset: SavedPreset) {
+        let copy = SavedPreset(id: UUID().uuidString, name: "\(preset.name) copy", icon: "star.square.fill",
+                               style: preset.style.styleOnly())
+        savedPresets.append(copy)
+        status = "Duplicated \(preset.name)"
+    }
+
+    /// Applies a random preset (different from the current one).
+    func surprise() {
+        let pool = allPresets.filter { $0.id != settings.currentPresetID }
+        if let pick = pool.randomElement() {
+            apply(pick)
+            status = "Surprise: \(pick.name)"
+        }
+    }
+
+    // MARK: - Colors
+
+    func applyPalette(_ palette: ColorPalette) {
+        var c = config
+        c.keylineHex = palette.color(0)
+        c.left.colorHex = palette.color(1)
+        c.right.colorHex = palette.color(2)
+        c.minimal.colorHex = palette.color(1)
+        c.left.color2Hex = palette.color(3)
+        c.right.color2Hex = palette.color(3)
+        c.minimal.color2Hex = palette.color(3)
+        config = c
+        status = "Applied \(palette.name) colors"
+    }
+
+    var slotsFollowAccent: Bool {
+        config.left.useAccent && config.right.useAccent && config.minimal.useAccent
+    }
+
+    func setSlotsFollowAccent(_ on: Bool) {
+        var c = config
+        c.left.useAccent = on
+        c.right.useAccent = on
+        c.minimal.useAccent = on
+        config = c
+    }
+
+    func setSlideshowPhotos(_ photos: [Data]) {
+        settings.slideshowPhotos = Array(photos.prefix(4))
+        status = photos.isEmpty ? "Slideshow cleared" : "Slideshow has \(min(photos.count, 4)) photos"
     }
 
     func copyShareCode(_ preset: SavedPreset) {
@@ -327,6 +437,14 @@ final class IslandManager: ObservableObject {
             settings.counter = 0
         case .togglePomodoro:
             togglePomodoro()
+        case .musicPlayPause:
+            MusicWatcher.togglePlayPause()
+        case .musicNext:
+            MusicWatcher.next()
+        case .musicPrevious:
+            MusicWatcher.previous()
+        case .surprise:
+            surprise()
         }
         await pushUpdate()
     }
@@ -488,8 +606,34 @@ final class IslandManager: ObservableObject {
         } else if live && settings.chargingTakeover && battery.charging {
             s.applyChargingStyle()
         }
+        // Accent sync: let the accent come from time, battery, weather or album art.
+        switch s.accentSync {
+        case .fixed:
+            break
+        case .timeOfDay:
+            s.keylineHex = Self.timeOfDayHex(now)
+        case .battery:
+            if battery.charging {
+                s.keylineHex = "34C759FF"
+            } else if battery.level >= 0 && battery.level <= 20 {
+                s.keylineHex = "FF3B30FF"
+            } else if battery.level >= 0 && battery.level <= 50 {
+                s.keylineHex = "FFCC00FF"
+            } else {
+                s.keylineHex = "30D158FF"
+            }
+        case .weather:
+            if let hex = Self.weatherHex(info.weatherSymbol) { s.keylineHex = hex }
+        case .albumArt:
+            if let hex = albumAccentHex { s.keylineHex = hex }
+        }
         if live && settings.lowBatteryAlert && !battery.charging && battery.level >= 0 && battery.level <= 20 {
             s.keylineHex = "FF3B30FF"
+        }
+        // Slots set to follow the accent take its color.
+        let slotPaths: [WritableKeyPath<IslandState, SlotConfig>] = [\.left, \.right, \.minimal]
+        for path in slotPaths where s[keyPath: path].useAccent {
+            s[keyPath: path].colorHex = s.keylineHex
         }
 
         // Tools
@@ -502,7 +646,14 @@ final class IslandManager: ObservableObject {
         s.pomoEnd = settings.pomoEnd
         s.daysSince = settings.daysSince
         s.worldTZ = settings.worldTZ
-        if s.uses(.crypto) {
+        s.buttonKinds = settings.expandedButtons
+        if s.uses(.slideshow) && !settings.slideshowPhotos.isEmpty {
+            let photos = settings.slideshowPhotos
+            let index = Int(now.timeIntervalSince1970 / max(1, settings.slideSeconds)) % photos.count
+            s.slideData = photos[index]
+        }
+        let chipsShowCrypto = (s.lockChips || s.expandedChips) && s.chipKinds.contains(ChipKind.crypto.rawValue)
+        if s.uses(.crypto) || chipsShowCrypto {
             s.cryptoSymbol = settings.cryptoCoin
             s.cryptoPrice = info.cryptoPrice
             s.cryptoChange = info.cryptoChange
@@ -538,8 +689,13 @@ final class IslandManager: ObservableObject {
     }
 
     private func liveState(now: Date = Date()) -> IslandState {
-        compose(base: config, now: now, frame: frame, cycleStart: cycleStart, cycleLength: max(1, cycleLength),
-                sessionStart: activityStart, budget: true, live: true, forceMusic: false)
+        var base = config
+        if var takeover = takeoverStyle {
+            if takeover.imageData == nil { takeover.imageData = config.imageData }
+            base = takeover
+        }
+        return compose(base: base, now: now, frame: frame, cycleStart: cycleStart, cycleLength: max(1, cycleLength),
+                       sessionStart: activityStart, budget: true, live: true, forceMusic: false)
     }
 
     /// The heartbeat. Runs whenever the app process is alive (foreground, or kept alive in background).
@@ -564,6 +720,7 @@ final class IslandManager: ObservableObject {
         dailyCounterReset(now: now)
         checkPomodoro(now: now)
         checkLowBattery()
+        evaluateTakeover(now: now)
         await syncMusicHide()
 
         guard isRunning, !waitingForForeground, !isHiddenForMusic, let current = activity else { return }
@@ -615,13 +772,16 @@ final class IslandManager: ObservableObject {
         let appActive = UIApplication.shared.applicationState == .active
         let musicSlots = config.usesAny([.music, .musicArt, .musicBars])
 
-        if musicSlots || settings.musicMode != .keep,
+        if musicSlots || settings.musicMode != .keep || config.accentSync == .albumArt,
            let snap = musicWatcher.poll(canPrompt: appActive && musicSlots) {
             var updated = info
             updated.musicTitle = snap.title
             updated.musicArtist = snap.artist
             updated.musicPlaying = snap.playing
             updated.musicArt = snap.art
+            if updated.musicArt != info.musicArt {
+                albumAccentHex = snap.art.flatMap { UIImage(data: $0) }.flatMap { PaletteExtractor.palette(from: $0).first }
+            }
             if updated != info { info = updated }
         }
 
@@ -661,7 +821,8 @@ final class IslandManager: ObservableObject {
             }
         }
 
-        if config.uses(.crypto), !cryptoInFlight,
+        let cryptoChips = (config.lockChips || config.expandedChips) && config.chipKinds.contains(ChipKind.crypto.rawValue)
+        if config.uses(.crypto) || cryptoChips, !cryptoInFlight,
            lastCryptoFetch.map({ now.timeIntervalSince($0) > 60 }) ?? true {
             cryptoInFlight = true
             lastCryptoFetch = now
@@ -717,6 +878,125 @@ final class IslandManager: ObservableObject {
             isHiddenForMusic = false
             await restartActivity()
         }
+    }
+
+    // MARK: Rules and shuffle
+
+    private var headphonesConnected: Bool {
+        let kinds: [AVAudioSession.Port] = [.headphones, .bluetoothA2DP, .bluetoothHFP, .bluetoothLE]
+        return AVAudioSession.sharedInstance().currentRoute.outputs.contains { kinds.contains($0.portType) }
+    }
+
+    /// The first enabled rule that matches right now.
+    private func matchingRule(now: Date) -> IslandRule? {
+        guard settings.rulesEnabled else { return nil }
+        let battery = batteryInfo()
+        let cal = Calendar.current
+        let comps = cal.dateComponents([.hour, .minute], from: now)
+        let minute = (comps.hour ?? 0) * 60 + (comps.minute ?? 0)
+        let symbol = info.weatherSymbol
+        for rule in settings.rules where rule.enabled {
+            let matches: Bool
+            switch rule.kind {
+            case .batteryBelow:
+                matches = battery.level >= 0 && !battery.charging && battery.level <= rule.number
+            case .charging:
+                matches = battery.charging
+            case .music:
+                matches = musicActive
+            case .headphones:
+                matches = headphonesConnected
+            case .rain:
+                matches = symbol.contains("rain") || symbol.contains("drizzle") || symbol.contains("bolt")
+            case .snow:
+                matches = symbol.contains("snow")
+            case .hot:
+                matches = (info.weatherTemp ?? Int.min) >= rule.number
+            case .cold:
+                matches = (info.weatherTemp ?? Int.max) <= rule.number
+            case .timeRange:
+                if rule.startMinute <= rule.endMinute {
+                    matches = minute >= rule.startMinute && minute < rule.endMinute
+                } else {
+                    matches = minute >= rule.startMinute || minute < rule.endMinute
+                }
+            case .weekend:
+                matches = cal.isDateInWeekend(now)
+            }
+            if matches { return rule }
+        }
+        return nil
+    }
+
+    private func pickShuffle(now: Date) {
+        let pool: [SavedPreset]
+        switch settings.shuffleSource {
+        case "favorites": pool = allPresets.filter { settings.favoriteIDs.contains($0.id) }
+        case "mine": pool = savedPresets
+        default: pool = allPresets
+        }
+        let choices = pool.filter { $0.name != shuffleName }
+        if let pick = (choices.isEmpty ? pool : choices).randomElement() {
+            shuffleStyle = pick.style
+            shuffleName = pick.name
+        }
+        lastShuffle = now
+    }
+
+    /// Rules beat shuffle; both swap the look without touching your saved style.
+    private func evaluateTakeover(now: Date) {
+        var style: IslandState?
+        var label = ""
+        if let rule = matchingRule(now: now), let preset = findPreset(rule.presetID) {
+            style = preset.style
+            label = "\(rule.kind.label) → \(preset.name)"
+        } else if settings.shuffleEnabled {
+            let due = lastShuffle.map { now.timeIntervalSince($0) >= Double(max(1, settings.shuffleMinutes)) * 60 } ?? true
+            if due || shuffleStyle == nil { pickShuffle(now: now) }
+            style = shuffleStyle
+            label = shuffleName.isEmpty ? "" : "Shuffle → \(shuffleName)"
+        } else {
+            shuffleStyle = nil
+            shuffleName = ""
+        }
+        let changed = style != takeoverStyle
+        takeoverStyle = style
+        if takeoverLabel != label { takeoverLabel = label }
+        if changed { configChanged() }
+    }
+
+    /// A smooth accent that drifts through the day: night indigo, sunrise orange, sky blue, sunset pink.
+    private static func timeOfDayHex(_ date: Date) -> String {
+        let c = Calendar.current.dateComponents([.hour, .minute], from: date)
+        let t = Double(c.hour ?? 0) + Double(c.minute ?? 0) / 60
+        let anchors: [(Double, Double, Double, Double)] = [
+            (0, 0.18, 0.16, 0.55), (5, 0.29, 0.25, 0.82), (7, 1.0, 0.62, 0.26), (10, 0.31, 0.76, 0.97),
+            (16, 0.31, 0.76, 0.97), (18.5, 1.0, 0.37, 0.54), (20.5, 0.56, 0.36, 1.0), (24, 0.18, 0.16, 0.55)
+        ]
+        for i in 0..<(anchors.count - 1) {
+            let a = anchors[i]
+            let b = anchors[i + 1]
+            if t >= a.0 && t <= b.0 {
+                let f = (t - a.0) / max(0.001, b.0 - a.0)
+                let r = a.1 + (b.1 - a.1) * f
+                let g = a.2 + (b.2 - a.2) * f
+                let bl = a.3 + (b.3 - a.3) * f
+                return String(format: "%02X%02X%02XFF", Int(r * 255), Int(g * 255), Int(bl * 255))
+            }
+        }
+        return "8E5CFFFF"
+    }
+
+    /// Accent for the current weather: sunny yellow, rainy blue, stormy purple and so on.
+    private static func weatherHex(_ symbol: String) -> String? {
+        if symbol.isEmpty { return nil }
+        if symbol.contains("bolt") { return "A259FFFF" }
+        if symbol.contains("snow") { return "DFF4FFFF" }
+        if symbol.contains("rain") || symbol.contains("drizzle") { return "4FA3FFFF" }
+        if symbol.contains("fog") { return "B0BEC5FF" }
+        if symbol.contains("moon") { return "8E5CFFFF" }
+        if symbol.contains("sun") { return "FFCC00FF" }
+        return "9AA5B1FF"
     }
 
     // MARK: Smart pop-outs
@@ -798,12 +1078,22 @@ final class IslandManager: ObservableObject {
     }
 
     private func checkHoliday(now: Date) {
-        guard let id = holidayPresetID(for: now) else { return }
+        guard let id = holidayPresetID(for: now) else {
+            // Holiday's over: if its preset is still showing, go back to the default.
+            if !lastHolidayPresetID.isEmpty {
+                if settings.currentPresetID == lastHolidayPresetID { applyDefault() }
+                lastHolidayPresetID = ""
+                UserDefaults.standard.set("", forKey: Keys.holidayPresetKey)
+            }
+            return
+        }
         let c = Calendar.current.dateComponents([.month, .day], from: now)
         let key = "\(id)@\(c.month ?? 0)-\(c.day ?? 0)"
         guard key != lastHolidayKey else { return }
         lastHolidayKey = key
         UserDefaults.standard.set(key, forKey: Keys.holidayKey)
+        lastHolidayPresetID = id
+        UserDefaults.standard.set(id, forKey: Keys.holidayPresetKey)
         applyPreset(id: id)
     }
 

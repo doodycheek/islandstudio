@@ -317,6 +317,72 @@ enum PresetStore {
             s.glow = true
             s.expandedTitle = "Happy birthday!"
             s.expandedSubtitle = "Make a wish"
+        },
+        make("bounce", "Bounce", "heart.fill") { (s: inout IslandState) in
+            s.left = SlotConfig(content: .symbol, symbol: "heart.fill", colorHex: "FF2D92FF", shape: .squircle, anim: .bounce)
+            s.right = SlotConfig(content: .clock, colorHex: "FF9ACBFF")
+            s.minimal = SlotConfig(content: .symbol, symbol: "heart.fill", colorHex: "FF2D92FF", anim: .bounce)
+            s.keylineHex = "FF2D92FF"
+            s.fontWeight = "heavy"
+            s.expandedTitle = "Bouncy"
+            s.badgeStyle = .squircle
+        },
+        make("aurora", "Aurora", "sun.horizon.fill") { (s: inout IslandState) in
+            s.left = SlotConfig(content: .symbol, symbol: "sparkles", useAccent: true, anim: .breathe)
+            s.right = SlotConfig(content: .clock, useAccent: true)
+            s.minimal = SlotConfig(content: .symbol, symbol: "sparkles", useAccent: true, anim: .breathe)
+            s.accentSync = .timeOfDay
+            s.glow = true
+            s.lockStyle = .gradient
+            s.expandedTitle = "Aurora"
+            s.expandedSubtitle = "Colors follow the sun"
+        },
+        make("candy", "Candy", "paintpalette.fill") { (s: inout IslandState) in
+            s.left = SlotConfig(content: .symbol, symbol: "heart.fill", colorHex: "FF6FD8FF", color2Hex: "B967FFFF",
+                                colorMode: .gradient, color3Hex: "05FFA1FF", gradientAngle: 45, shape: .capsule, anim: .wiggle)
+            s.right = SlotConfig(content: .equalizer, colorHex: "FF6FD8FF", color2Hex: "B967FFFF",
+                                 colorMode: .cycle, color3Hex: "05FFA1FF")
+            s.minimal = SlotConfig(content: .symbol, symbol: "heart.fill", colorHex: "FF6FD8FF", anim: .pulse)
+            s.keylineHex = "FF6FD8FF"
+            s.islandBg = .tint
+            s.lockStyle = .custom
+            s.lockBgHex = "3A1450FF"
+            s.lockBg2Hex = "0F4A3AFF"
+            s.expandedTitle = "Sweet"
+        },
+        make("retro", "Retro", "tv.fill") { (s: inout IslandState) in
+            s.left = SlotConfig(content: .text, text: "RETRO", colorHex: "FFB000FF", color2Hex: "FF4D00FF",
+                                colorMode: .gradient, gradientAngle: 90)
+            s.right = SlotConfig(content: .clock, colorHex: "FFB000FF")
+            s.minimal = SlotConfig(content: .symbol, symbol: "tv.fill", colorHex: "FFB000FF")
+            s.keylineHex = "FFB000FF"
+            s.fontDesign = "monospaced"
+            s.fontWidth = "expanded"
+            s.tracking = 2
+            s.expandedLayout = .centered
+            s.expandedTitle = "RETRO"
+            s.lockStyle = .custom
+            s.lockBgHex = "2A1600FF"
+            s.lockBg2Hex = "000000FF"
+            s.badgeStyle = .squircle
+        },
+        make("batterysync", "Battery Sync", "battery.75") { (s: inout IslandState) in
+            s.left = SlotConfig(content: .battery, useAccent: true)
+            s.right = SlotConfig(content: .ring, useAccent: true)
+            s.minimal = SlotConfig(content: .pulse, symbol: "bolt.fill", useAccent: true)
+            s.accentSync = .battery
+            s.lockBarStyle = .battery
+            s.expandedTitle = "Power"
+        },
+        make("weatherglow", "Weather Glow", "cloud.sun.rain.fill") { (s: inout IslandState) in
+            s.left = SlotConfig(content: .weather, colorMode: .live)
+            s.right = SlotConfig(content: .ring, useAccent: true)
+            s.minimal = SlotConfig(content: .weather, colorMode: .live)
+            s.accentSync = .weather
+            s.glow = true
+            s.lockBarStyle = .day
+            s.expandedChips = true
+            s.expandedTitle = "Outside"
         }
     ]
 
@@ -332,7 +398,9 @@ enum PresetStore {
         "halloween": "Seasonal", "winter": "Seasonal", "christmas": "Seasonal", "valentine": "Seasonal",
         "newyear": "Seasonal", "birthday": "Seasonal",
         "focus": "Tools", "hydrate": "Tools", "quotes": "Tools",
-        "crypto": "Info", "moon": "Info", "worldclock": "Info", "together": "Vibes"
+        "crypto": "Info", "moon": "Info", "worldclock": "Info", "together": "Vibes",
+        "bounce": "Fun", "candy": "Fun", "aurora": "Vibes", "retro": "Vibes",
+        "batterysync": "Info", "weatherglow": "Info"
     ]
 
     static func category(for id: String) -> String {

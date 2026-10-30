@@ -186,15 +186,15 @@ struct ExpandedPreview: View {
     var body: some View {
         VStack(spacing: 8) {
             HStack(alignment: .center, spacing: 8) {
-                SlotView(slot: state.left, state: state, size: 30)
+                SlotView(slot: state.left, state: state, size: state.expandedSlotSize * 0.88)
                     .islandPanel(state)
-                    .frame(width: 80, alignment: .leading)
+                    .frame(width: 84, alignment: .leading)
                 Spacer(minLength: 0)
                 ExpandedTitle(state: state)
                 Spacer(minLength: 0)
-                SlotView(slot: state.right, state: state, size: 30)
+                SlotView(slot: state.right, state: state, size: state.expandedSlotSize * 0.88)
                     .islandPanel(state)
-                    .frame(width: 80, alignment: .trailing)
+                    .frame(width: 84, alignment: .trailing)
             }
             ExpandedBottom(state: state)
         }
@@ -222,6 +222,15 @@ struct SlotEditor: View {
                                 "leaf.fill", "crown.fill", "circle.fill", "sun.max.fill", "cloud.fill",
                                 "pawprint.fill", "headphones", "snowflake", "drop.fill", "moon.stars.fill",
                                 "steeringwheel"]
+
+    private var hasMotionSpeed: Bool {
+        slot.anim != .none || slot.content == .pulse || slot.content == .spin || slot.content == .rainbow
+    }
+
+    private var thirdColor: Binding<Bool> {
+        Binding(get: { !slot.color3Hex.isEmpty },
+                set: { slot.color3Hex = $0 ? "FFD60AFF" : "" })
+    }
 
     var body: some View {
         Form {
@@ -277,23 +286,64 @@ struct SlotEditor: View {
             }
 
             if slot.content.usesColor {
-                Section {
-                    Picker("Color style", selection: $slot.colorMode) {
-                        ForEach(ColorMode.allCases) { mode in
-                            Text(mode.label).tag(mode)
-                        }
+                colorSection
+            }
+
+            Section {
+                VStack(alignment: .leading, spacing: 4) {
+                    HStack {
+                        Text("Size")
+                        Spacer()
+                        Text("\(Int((slot.scale * 100).rounded()))%").foregroundStyle(.secondary)
                     }
-                    .pickerStyle(.segmented)
-                    ColorPicker(slot.colorMode == .solid ? "Color" : "First color",
-                                selection: colorBinding(\.colorHex))
-                    if slot.colorMode != .solid {
-                        ColorPicker("Second color", selection: colorBinding(\.color2Hex))
-                    }
-                } header: {
-                    Text("Color")
-                } footer: {
-                    Text("Gradient blends the two colors. Cycle switches between them on every step. Live uses natural colors: weather icons show rain or sun, crypto turns green or red, the focus timer changes color by phase.")
+                    Slider(value: $slot.scale, in: 0.6...1.6, step: 0.05)
                 }
+                VStack(alignment: .leading, spacing: 4) {
+                    HStack {
+                        Text("Nudge sideways")
+                        Spacer()
+                        Text("\(Int(slot.offsetX)) pt").foregroundStyle(.secondary)
+                    }
+                    Slider(value: $slot.offsetX, in: -12...12, step: 1)
+                }
+                Picker("Shape", selection: $slot.shape) {
+                    ForEach(SlotShape.allCases) { shape in
+                        Text(shape.label).tag(shape)
+                    }
+                }
+                .pickerStyle(.segmented)
+                if slot.scale != 1 || slot.offsetX != 0 {
+                    Button("Reset size and position") {
+                        slot.scale = 1
+                        slot.offsetX = 0
+                    }
+                }
+            } header: {
+                Text("Size, position & shape")
+            } footer: {
+                Text("Shapes add a soft colored backing behind the slot. Big sizes can get clipped by the island's edges.")
+            }
+
+            Section {
+                Picker("Animation", selection: $slot.anim) {
+                    ForEach(SlotAnim.allCases) { anim in
+                        Text(anim.label).tag(anim)
+                    }
+                }
+                if hasMotionSpeed {
+                    VStack(alignment: .leading, spacing: 4) {
+                        HStack {
+                            Text("Speed")
+                            Spacer()
+                            Text(String(format: "%.2gx", slot.speed)).foregroundStyle(.secondary)
+                        }
+                        Slider(value: $slot.speed, in: 0.5...2, step: 0.25)
+                    }
+                }
+            } header: {
+                Text("Motion")
+            } footer: {
+                Text("Adds movement to anything in this slot. Speed also changes the Pulse, Spin and Rainbow slots.")
             }
         }
         .themedForm()
@@ -304,6 +354,45 @@ struct SlotEditor: View {
         .onChange(of: slot.content) { _, newValue in
             // Weather and crypto look best in their natural, live colors.
             if newValue == .weather || newValue == .crypto { slot.colorMode = .live }
+        }
+    }
+
+    @ViewBuilder private var colorSection: some View {
+        Section {
+            Toggle("Follow accent color", isOn: $slot.useAccent)
+            if !slot.useAccent {
+                Picker("Color style", selection: $slot.colorMode) {
+                    ForEach(ColorMode.allCases) { mode in
+                        Text(mode.label).tag(mode)
+                    }
+                }
+                .pickerStyle(.segmented)
+                ColorPicker(slot.colorMode == .gradient || slot.colorMode == .cycle ? "First color" : "Color",
+                            selection: colorBinding(\.colorHex))
+                if slot.colorMode == .gradient || slot.colorMode == .cycle {
+                    ColorPicker("Second color", selection: colorBinding(\.color2Hex))
+                    Toggle("Add a third color", isOn: thirdColor)
+                    if !slot.color3Hex.isEmpty {
+                        ColorPicker("Third color", selection: colorBinding(\.color3Hex))
+                    }
+                }
+                if slot.colorMode == .gradient {
+                    VStack(alignment: .leading, spacing: 4) {
+                        HStack {
+                            Text("Angle")
+                            Spacer()
+                            Text("\(Int(slot.gradientAngle))°").foregroundStyle(.secondary)
+                        }
+                        Slider(value: $slot.gradientAngle, in: 0...360, step: 15)
+                    }
+                }
+            }
+        } header: {
+            Text("Color")
+        } footer: {
+            Text(slot.useAccent
+                 ? "This slot uses the accent color, so it changes whenever the accent does (including synced accents)."
+                 : "Gradient blends your colors at any angle. Cycle switches between them every step. Live uses natural colors: weather shows real conditions, crypto goes green or red, the focus timer changes by phase.")
         }
     }
 
@@ -338,7 +427,7 @@ struct SlotNavLabel: View {
 
     var body: some View {
         HStack(spacing: 12) {
-            SlotView(slot: slot, state: state, size: 16)
+            SlotView(slot: slot, state: state, size: 16, decorated: false)
                 .frame(width: 34, height: 34)
                 .background(Circle().fill(Color.black))
                 .environment(\.colorScheme, .dark)
@@ -388,13 +477,15 @@ struct PresetCard: View {
     let category: String
     let isCurrent: Bool
     let state: IslandState
+    var isDefault = false
+    var isFavorite = false
     let action: () -> Void
     @Environment(\.themeAccent) private var accent
 
     var body: some View {
         Button(action: action) {
             VStack(alignment: .leading, spacing: 10) {
-                ZStack {
+                ZStack(alignment: .topTrailing) {
                     RoundedRectangle(cornerRadius: 14, style: .continuous)
                         .fill(LinearGradient(colors: [Color(red: 0.16, green: 0.17, blue: 0.24),
                                                       Color(red: 0.05, green: 0.05, blue: 0.08)],
@@ -402,12 +493,29 @@ struct PresetCard: View {
                     IslandPreview(state: state)
                         .scaleEffect(0.46)
                         .frame(width: 140, height: 26)
+                        .frame(maxWidth: .infinity, maxHeight: .infinity)
+                    if isDefault {
+                        Image(systemName: "house.fill")
+                            .font(.caption2)
+                            .foregroundStyle(.white)
+                            .padding(5)
+                            .background(Circle().fill(accent))
+                            .padding(6)
+                    }
                 }
                 .frame(height: 64)
                 HStack {
                     VStack(alignment: .leading, spacing: 2) {
-                        Text(preset.name).font(.subheadline.weight(.semibold)).lineLimit(1)
-                        Text(category).font(.caption).foregroundStyle(.secondary)
+                        HStack(spacing: 4) {
+                            Text(preset.name).font(.subheadline.weight(.semibold)).lineLimit(1)
+                            if isFavorite {
+                                Image(systemName: "star.fill").font(.caption2).foregroundStyle(Color.yellow)
+                            }
+                        }
+                        Text(isDefault ? "Default · \(category)" : category)
+                            .font(.caption)
+                            .foregroundStyle(.secondary)
+                            .lineLimit(1)
                     }
                     Spacer(minLength: 0)
                     if isCurrent {

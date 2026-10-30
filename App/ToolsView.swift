@@ -1,8 +1,10 @@
+import PhotosUI
 import SwiftUI
 
 /// Setup for the tool and data slots: counter, focus timer, days counter, crypto, world clock, messages.
 struct ToolsView: View {
     @EnvironmentObject var manager: IslandManager
+    @State private var slideItems: [PhotosPickerItem] = []
 
     private let zones: [(id: String, name: String)] = [
         ("Pacific/Honolulu", "Honolulu"), ("America/Los_Angeles", "Los Angeles"), ("America/Denver", "Denver"),
@@ -34,6 +36,7 @@ struct ToolsView: View {
                 cryptoCard
                 worldCard
                 messagesCard
+                slideshowCard
             }
             .padding(16)
         }
@@ -136,6 +139,60 @@ struct ToolsView: View {
                 .pickerStyle(.menu)
                 .labelsHidden()
             }
+        }
+    }
+
+    private var slideshowCard: some View {
+        Card(title: "Photo slideshow", icon: "photo.stack", tint: .green,
+             footer: "Pick up to 4 photos, then set a slot to Photo slideshow and they take turns. Each one is shrunk to a tiny icon to fit iOS's limit.") {
+            PhotosPicker(selection: $slideItems, maxSelectionCount: 4, matching: .images) {
+                Label(manager.settings.slideshowPhotos.isEmpty ? "Choose photos" : "Change photos",
+                      systemImage: "photo.on.rectangle.angled")
+                    .font(.subheadline.weight(.semibold))
+            }
+            if !manager.settings.slideshowPhotos.isEmpty {
+                HStack(spacing: 8) {
+                    ForEach(Array(manager.settings.slideshowPhotos.enumerated()), id: \.offset) { item in
+                        if let ui = UIImage(data: item.element) {
+                            Image(uiImage: ui)
+                                .resizable()
+                                .scaledToFill()
+                                .frame(width: 44, height: 44)
+                                .clipShape(RoundedRectangle(cornerRadius: 10, style: .continuous))
+                        }
+                    }
+                    Spacer()
+                    Button("Clear", role: .destructive) {
+                        manager.setSlideshowPhotos([])
+                    }
+                    .font(.subheadline)
+                }
+            }
+            VStack(alignment: .leading, spacing: 4) {
+                HStack {
+                    Text("Change every")
+                    Spacer()
+                    Text("\(manager.settings.slideSeconds, specifier: "%.0f")s").foregroundStyle(.secondary)
+                }
+                Slider(value: $manager.settings.slideSeconds, in: 1...10, step: 1)
+            }
+        }
+        .onChange(of: slideItems) { _, items in
+            loadSlides(items)
+        }
+    }
+
+    private func loadSlides(_ items: [PhotosPickerItem]) {
+        guard !items.isEmpty else { return }
+        Task {
+            var photos: [Data] = []
+            for item in items {
+                if let data = try? await item.loadTransferable(type: Data.self),
+                   let tiny = ImageCompressor.tinyJPEG(from: data, maxBytes: 700) {
+                    photos.append(tiny)
+                }
+            }
+            manager.setSlideshowPhotos(photos)
         }
     }
 

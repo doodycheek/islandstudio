@@ -95,5 +95,9 @@ struct IslandShortcuts: AppShortcutsProvider {
                     phrases: ["Add one to my counter in \(.applicationName)"],
                     shortTitle: "Add One",
                     systemImageName: "plus.circle.fill")
+        AppShortcut(intent: SurpriseIntent(),
+                    phrases: ["Surprise me in \(.applicationName)"],
+                    shortTitle: "Surprise Preset",
+                    systemImageName: "shuffle")
     }
 }

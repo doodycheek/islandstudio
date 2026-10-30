@@ -44,6 +44,22 @@ struct AppSettings: Codable, Hashable {
     var messagesText = "You've got this\nDrink some water\nTake a deep breath"
     var messageSeconds = 4.0
 
+    // Presets
+    var defaultPresetID = "neon"
+    var favoriteIDs: [String] = []
+
+    // Rules and shuffle
+    var rulesEnabled = false
+    var rules: [IslandRule] = []
+    var shuffleEnabled = false
+    var shuffleMinutes = 30
+    var shuffleSource = "all"
+
+    // Controls and media
+    var expandedButtons: [String] = ["prev", "pause", "next"]
+    var slideshowPhotos: [Data] = []
+    var slideSeconds = 3.0
+
     enum CodingKeys: String, CodingKey {
         case countdownTarget, useFahrenheit, latitude, longitude, chargingMode, chargingTakeover
         case hourlyPopOut, chimeSound, showIslandButtons, currentPresetID, schedule, musicMode
@@ -52,6 +68,8 @@ struct AppSettings: Codable, Hashable {
         case counter, counterGoal, counterButtons, counterResetsDaily, counterDay
         case focusMinutes, breakMinutes, pomoPhase, pomoStart, pomoEnd
         case daysSince, cryptoCoin, worldTZ, messagesText, messageSeconds
+        case defaultPresetID, favoriteIDs, rulesEnabled, rules, shuffleEnabled, shuffleMinutes, shuffleSource
+        case expandedButtons, slideshowPhotos, slideSeconds
     }
 }
 
@@ -96,6 +114,16 @@ extension AppSettings {
         worldTZ = c.value(.worldTZ, default: worldTZ)
         messagesText = c.value(.messagesText, default: messagesText)
         messageSeconds = c.value(.messageSeconds, default: messageSeconds)
+        defaultPresetID = c.value(.defaultPresetID, default: defaultPresetID)
+        favoriteIDs = c.value(.favoriteIDs, default: favoriteIDs)
+        rulesEnabled = c.value(.rulesEnabled, default: rulesEnabled)
+        rules = c.value(.rules, default: rules)
+        shuffleEnabled = c.value(.shuffleEnabled, default: shuffleEnabled)
+        shuffleMinutes = c.value(.shuffleMinutes, default: shuffleMinutes)
+        shuffleSource = c.value(.shuffleSource, default: shuffleSource)
+        expandedButtons = c.value(.expandedButtons, default: expandedButtons)
+        slideshowPhotos = c.value(.slideshowPhotos, default: slideshowPhotos)
+        slideSeconds = c.value(.slideSeconds, default: slideSeconds)
     }
 }
 
@@ -139,5 +167,77 @@ enum MusicMode: String, Codable, CaseIterable, Identifiable, Hashable {
         case .hide:
             return "Your island steps aside so the music player gets the whole island, then comes back when the music stops. FaceTime and phone calls never trigger this."
         }
+    }
+}
+
+// MARK: - Rules
+
+/// "If this happens, show that preset." Rules swap the look temporarily and never change your saved style.
+struct IslandRule: Codable, Hashable, Identifiable {
+    var id = UUID().uuidString
+    var enabled = true
+    var kind: RuleKind = .batteryBelow
+    var number = 20
+    var startMinute = 22 * 60
+    var endMinute = 6 * 60
+    var presetID = "nightowl"
+}
+
+enum RuleKind: String, Codable, CaseIterable, Identifiable, Hashable {
+    case batteryBelow, charging, music, headphones, rain, snow, hot, cold, timeRange, weekend
+
+    var id: String { rawValue }
+
+    var label: String {
+        switch self {
+        case .batteryBelow: return "Battery is low"
+        case .charging: return "Charging"
+        case .music: return "Music is playing"
+        case .headphones: return "Headphones connected"
+        case .rain: return "It's raining"
+        case .snow: return "It's snowing"
+        case .hot: return "It's hot"
+        case .cold: return "It's cold"
+        case .timeRange: return "Time of day"
+        case .weekend: return "Weekend"
+        }
+    }
+
+    var icon: String {
+        switch self {
+        case .batteryBelow: return "battery.25"
+        case .charging: return "bolt.fill"
+        case .music: return "music.note"
+        case .headphones: return "headphones"
+        case .rain: return "cloud.rain.fill"
+        case .snow: return "cloud.snow.fill"
+        case .hot: return "thermometer.sun.fill"
+        case .cold: return "thermometer.snowflake"
+        case .timeRange: return "clock.fill"
+        case .weekend: return "calendar"
+        }
+    }
+
+    /// The label for the rule's number, when it has one.
+    var numberLabel: String? {
+        switch self {
+        case .batteryBelow: return "At or below"
+        case .hot: return "At or above"
+        case .cold: return "At or below"
+        default: return nil
+        }
+    }
+
+    var numberRange: ClosedRange<Int> {
+        switch self {
+        case .batteryBelow: return 5...50
+        case .hot: return 50...120
+        case .cold: return -20...60
+        default: return 0...100
+        }
+    }
+
+    var numberUnit: String {
+        self == .batteryBelow ? "%" : "°"
     }
 }

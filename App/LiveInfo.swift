@@ -32,6 +32,23 @@ final class MusicWatcher {
     private var cachedArt: Data?
     private var askedOnce = false
 
+    static func togglePlayPause() {
+        let player = MPMusicPlayerController.systemMusicPlayer
+        if player.playbackState == .playing {
+            player.pause()
+        } else {
+            player.play()
+        }
+    }
+
+    static func next() {
+        MPMusicPlayerController.systemMusicPlayer.skipToNextItem()
+    }
+
+    static func previous() {
+        MPMusicPlayerController.systemMusicPlayer.skipToPreviousItem()
+    }
+
     static func requestAccess() async -> Bool {
         await withCheckedContinuation { cont in
             MPMediaLibrary.requestAuthorization { @Sendable status in

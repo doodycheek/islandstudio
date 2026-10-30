@@ -25,12 +25,13 @@ enum ThemeMode: String, CaseIterable, Identifiable {
 }
 
 enum AccentChoice: String, CaseIterable, Identifiable {
-    case purple, blue, pink, orange, green, mint, red, mono
+    case island, purple, blue, pink, orange, green, mint, red, mono
 
     var id: String { rawValue }
 
     var color: Color {
         switch self {
+        case .island: return Color(red: 0.0, green: 0.9, blue: 1.0)
         case .purple: return Color(red: 0.58, green: 0.38, blue: 0.98)
         case .blue: return Color(red: 0.20, green: 0.52, blue: 1.00)
         case .pink: return Color(red: 1.00, green: 0.33, blue: 0.62)
@@ -218,6 +219,96 @@ struct FilterChip: View {
                 .foregroundStyle(selected ? Color.white : Color.primary)
         }
         .buttonStyle(.plain)
+    }
+}
+
+/// Small capsule action button.
+struct PillButton: View {
+    let title: String
+    let icon: String
+    let action: () -> Void
+
+    var body: some View {
+        Button(action: action) {
+            Label(title, systemImage: icon)
+                .font(.caption.weight(.semibold))
+                .lineLimit(1)
+                .padding(.horizontal, 11)
+                .padding(.vertical, 8)
+                .background(Capsule().fill(Color(.tertiarySystemFill)))
+        }
+        .buttonStyle(.plain)
+    }
+}
+
+/// Wide rounded action button used in pairs.
+struct WideButton: View {
+    let title: String
+    let icon: String
+    let action: () -> Void
+
+    var body: some View {
+        Button(action: action) {
+            Label(title, systemImage: icon)
+                .font(.subheadline.weight(.semibold))
+                .lineLimit(1)
+                .minimumScaleFactor(0.8)
+                .frame(maxWidth: .infinity)
+                .padding(.vertical, 10)
+                .background(RoundedRectangle(cornerRadius: 12, style: .continuous).fill(Color(.tertiarySystemFill)))
+        }
+        .buttonStyle(.plain)
+    }
+}
+
+/// Horizontal picker of SF Symbols ("" = none).
+struct IconStrip: View {
+    @Binding var symbol: String
+    @Environment(\.themeAccent) private var accent
+
+    static let symbols = ["", "sparkles", "heart.fill", "star.fill", "bolt.fill", "flame.fill", "moon.stars.fill",
+                          "music.note", "crown.fill", "leaf.fill", "sun.max.fill", "cloud.fill", "gamecontroller.fill",
+                          "car.fill", "pawprint.fill", "headphones", "lock.fill", "bell.fill", "camera.fill", "gift.fill"]
+
+    var body: some View {
+        ScrollView(.horizontal, showsIndicators: false) {
+            HStack(spacing: 8) {
+                ForEach(Self.symbols, id: \.self) { name in
+                    Button {
+                        symbol = name
+                    } label: {
+                        Image(systemName: name.isEmpty ? "nosign" : name)
+                            .font(.body)
+                            .frame(width: 36, height: 36)
+                            .background(RoundedRectangle(cornerRadius: 10, style: .continuous)
+                                .fill(symbol == name ? accent.opacity(0.25) : Color(.tertiarySystemFill)))
+                            .foregroundStyle(symbol == name ? accent : Color.primary)
+                    }
+                    .buttonStyle(.plain)
+                }
+            }
+        }
+    }
+}
+
+/// Multi-select chips for the Lock Screen / expanded info chips.
+struct ChipPicker: View {
+    @Binding var kinds: [String]
+
+    var body: some View {
+        ScrollView(.horizontal, showsIndicators: false) {
+            HStack(spacing: 8) {
+                ForEach(ChipKind.allCases) { kind in
+                    FilterChip(title: kind.label, selected: kinds.contains(kind.rawValue)) {
+                        if let index = kinds.firstIndex(of: kind.rawValue) {
+                            kinds.remove(at: index)
+                        } else {
+                            kinds.append(kind.rawValue)
+                        }
+                    }
+                }
+            }
+        }
     }
 }
 

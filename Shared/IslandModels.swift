@@ -27,7 +27,7 @@ enum SlotCategory: String, CaseIterable, Identifiable {
 }
 
 enum SlotContent: String, Codable, CaseIterable, Identifiable, Hashable {
-    case empty, text, emoji, symbol, image
+    case empty, text, emoji, symbol, image, slideshow
     case clock, liveClock, date, battery, music, musicArt, steps, weather, countdown
     case daysCounter, moon, crypto, worldClock
     case counter, pomodoro, messages
@@ -37,7 +37,7 @@ enum SlotContent: String, Codable, CaseIterable, Identifiable, Hashable {
 
     var category: SlotCategory {
         switch self {
-        case .empty, .text, .emoji, .symbol, .image:
+        case .empty, .text, .emoji, .symbol, .image, .slideshow:
             return .basic
         case .clock, .liveClock, .date, .battery, .music, .musicArt, .steps, .weather, .countdown,
              .daysCounter, .moon, .crypto, .worldClock:
@@ -56,6 +56,7 @@ enum SlotContent: String, Codable, CaseIterable, Identifiable, Hashable {
         case .emoji: return "Emoji"
         case .symbol: return "Icon (SF Symbol)"
         case .image: return "My photo"
+        case .slideshow: return "Photo slideshow"
         case .clock: return "Clock"
         case .liveClock: return "Live clock (seconds)"
         case .date: return "Date"
@@ -92,6 +93,7 @@ enum SlotContent: String, Codable, CaseIterable, Identifiable, Hashable {
         case .emoji: return "face.smiling"
         case .symbol: return "star"
         case .image: return "photo"
+        case .slideshow: return "photo.stack"
         case .clock: return "clock"
         case .liveClock: return "clock.arrow.circlepath"
         case .date: return "calendar"
@@ -147,6 +149,8 @@ enum SlotContent: String, Codable, CaseIterable, Identifiable, Hashable {
             return "Start it from the long-press view or Settings → Tools. Pops out when each phase ends."
         case .messages:
             return "Cycles through your own messages. Edit them under Settings → Tools."
+        case .slideshow:
+            return "Cycles through up to 4 photos. Pick them under Settings → Tools."
         case .marquee:
             return "Scrolls one letter per animation step. Lower the animation step for faster scrolling."
         case .chargeBar:
@@ -184,7 +188,7 @@ enum SlotContent: String, Codable, CaseIterable, Identifiable, Hashable {
     /// Compact, square-ish content (gets a round badge on the Lock Screen). Text-like content gets a pill.
     var isIconLike: Bool {
         switch self {
-        case .symbol, .emoji, .image, .musicArt, .ring, .pulse, .spin, .rainbow, .equalizer, .musicBars:
+        case .symbol, .emoji, .image, .slideshow, .musicArt, .ring, .pulse, .spin, .rainbow, .equalizer, .musicBars:
             return true
         default:
             return false
@@ -192,12 +196,15 @@ enum SlotContent: String, Codable, CaseIterable, Identifiable, Hashable {
     }
 
     var usesColor: Bool {
-        !(self == .empty || self == .emoji || self == .image || self == .rainbow || self == .musicArt)
+        !(self == .empty || self == .emoji || self == .image || self == .slideshow
+            || self == .rainbow || self == .musicArt)
     }
 }
 
+// MARK: - Style options
+
 enum LockStyle: String, Codable, CaseIterable, Identifiable, Hashable {
-    case tinted, black, glass
+    case tinted, black, glass, gradient, custom
 
     var id: String { rawValue }
 
@@ -206,6 +213,8 @@ enum LockStyle: String, Codable, CaseIterable, Identifiable, Hashable {
         case .tinted: return "Tinted"
         case .black: return "Black"
         case .glass: return "Glass"
+        case .gradient: return "Gradient"
+        case .custom: return "Custom"
         }
     }
 }
@@ -220,6 +229,50 @@ enum LockLayout: String, Codable, CaseIterable, Identifiable, Hashable {
         case .classic: return "Classic"
         case .compact: return "Compact"
         case .hero: return "Hero"
+        }
+    }
+}
+
+/// What the Lock Screen / expanded progress bar shows.
+enum LockBar: String, Codable, CaseIterable, Identifiable, Hashable {
+    case loop, day, battery, counter
+
+    var id: String { rawValue }
+
+    var label: String {
+        switch self {
+        case .loop: return "Loop"
+        case .day: return "Day"
+        case .battery: return "Battery"
+        case .counter: return "Counter"
+        }
+    }
+}
+
+enum BadgeStyle: String, Codable, CaseIterable, Identifiable, Hashable {
+    case circle, squircle, none
+
+    var id: String { rawValue }
+
+    var label: String {
+        switch self {
+        case .circle: return "Circle"
+        case .squircle: return "Squircle"
+        case .none: return "None"
+        }
+    }
+}
+
+enum ExpandedLayout: String, Codable, CaseIterable, Identifiable, Hashable {
+    case standard, centered, big
+
+    var id: String { rawValue }
+
+    var label: String {
+        switch self {
+        case .standard: return "Standard"
+        case .centered: return "Big title"
+        case .big: return "Big icons"
         }
     }
 }
@@ -239,6 +292,33 @@ enum IslandBG: String, Codable, CaseIterable, Identifiable, Hashable {
     }
 }
 
+/// Where the accent color comes from.
+enum AccentSync: String, Codable, CaseIterable, Identifiable, Hashable {
+    case fixed, timeOfDay, battery, weather, albumArt
+
+    var id: String { rawValue }
+
+    var label: String {
+        switch self {
+        case .fixed: return "My color"
+        case .timeOfDay: return "Time of day"
+        case .battery: return "Battery"
+        case .weather: return "Weather"
+        case .albumArt: return "Album art"
+        }
+    }
+
+    var icon: String {
+        switch self {
+        case .fixed: return "paintpalette.fill"
+        case .timeOfDay: return "sun.horizon.fill"
+        case .battery: return "battery.75"
+        case .weather: return "cloud.sun.fill"
+        case .albumArt: return "photo.artframe"
+        }
+    }
+}
+
 enum ColorMode: String, Codable, CaseIterable, Identifiable, Hashable {
     case solid, gradient, cycle, live
 
@@ -254,6 +334,99 @@ enum ColorMode: String, Codable, CaseIterable, Identifiable, Hashable {
     }
 }
 
+enum SlotShape: String, Codable, CaseIterable, Identifiable, Hashable {
+    case none, circle, squircle, capsule
+
+    var id: String { rawValue }
+
+    var label: String {
+        switch self {
+        case .none: return "None"
+        case .circle: return "Circle"
+        case .squircle: return "Squircle"
+        case .capsule: return "Pill"
+        }
+    }
+}
+
+/// A motion any slot can have, on top of its content.
+enum SlotAnim: String, Codable, CaseIterable, Identifiable, Hashable {
+    case none, pulse, bounce, breathe, wiggle, float, spin, flip
+
+    var id: String { rawValue }
+
+    var label: String {
+        switch self {
+        case .none: return "None"
+        case .pulse: return "Pulse"
+        case .bounce: return "Bounce"
+        case .breathe: return "Breathe"
+        case .wiggle: return "Wiggle"
+        case .float: return "Float"
+        case .spin: return "Spin"
+        case .flip: return "Flip"
+        }
+    }
+}
+
+/// Info chips for the Lock Screen and expanded view.
+enum ChipKind: String, Codable, CaseIterable, Identifiable, Hashable {
+    case battery, weather, steps, date, moon, counter, crypto, countdown, focus
+
+    var id: String { rawValue }
+
+    var label: String {
+        switch self {
+        case .battery: return "Battery"
+        case .weather: return "Weather"
+        case .steps: return "Steps"
+        case .date: return "Date"
+        case .moon: return "Moon"
+        case .counter: return "Counter"
+        case .crypto: return "Crypto"
+        case .countdown: return "Countdown"
+        case .focus: return "Focus"
+        }
+    }
+}
+
+/// Buttons you can put in the long-press view.
+enum ButtonKind: String, Codable, CaseIterable, Identifiable, Hashable {
+    case prev, next, pause, counterPlus, counterMinus, focus, musicPrevious, musicPlayPause, musicNext, surprise
+
+    var id: String { rawValue }
+
+    var label: String {
+        switch self {
+        case .prev: return "Previous preset"
+        case .next: return "Next preset"
+        case .pause: return "Pause animation"
+        case .counterPlus: return "Counter +1"
+        case .counterMinus: return "Counter −1"
+        case .focus: return "Focus timer"
+        case .musicPrevious: return "Music: previous"
+        case .musicPlayPause: return "Music: play/pause"
+        case .musicNext: return "Music: next"
+        case .surprise: return "Surprise preset"
+        }
+    }
+
+    var icon: String {
+        switch self {
+        case .prev: return "chevron.left.circle.fill"
+        case .next: return "chevron.right.circle.fill"
+        case .pause: return "pause.circle.fill"
+        case .counterPlus: return "plus.circle.fill"
+        case .counterMinus: return "minus.circle.fill"
+        case .focus: return "timer"
+        case .musicPrevious: return "backward.fill"
+        case .musicPlayPause: return "playpause.fill"
+        case .musicNext: return "forward.fill"
+        case .surprise: return "shuffle"
+        }
+    }
+}
+
 // MARK: - Slot
 
 struct SlotConfig: Codable, Hashable {
@@ -263,9 +436,18 @@ struct SlotConfig: Codable, Hashable {
     var colorHex: String = "FFFFFFFF"
     var color2Hex: String = "FF2D92FF"
     var colorMode: ColorMode = .solid
+    var color3Hex: String = ""
+    var gradientAngle: Double = 135
+    var useAccent = false
+    var scale: Double = 1
+    var offsetX: Double = 0
+    var shape: SlotShape = .none
+    var anim: SlotAnim = .none
+    var speed: Double = 1
 
     enum CodingKeys: String, CodingKey {
         case content, text, symbol, colorHex, color2Hex, colorMode
+        case color3Hex, gradientAngle, useAccent, scale, offsetX, shape, anim, speed
     }
 }
 
@@ -280,6 +462,34 @@ extension SlotConfig {
         colorHex = c.value(.colorHex, default: colorHex)
         color2Hex = c.value(.color2Hex, default: color2Hex)
         colorMode = c.value(.colorMode, default: colorMode)
+        color3Hex = c.value(.color3Hex, default: color3Hex)
+        gradientAngle = c.value(.gradientAngle, default: gradientAngle)
+        useAccent = c.value(.useAccent, default: useAccent)
+        scale = c.value(.scale, default: scale)
+        offsetX = c.value(.offsetX, default: offsetX)
+        shape = c.value(.shape, default: shape)
+        anim = c.value(.anim, default: anim)
+        speed = c.value(.speed, default: speed)
+    }
+
+    // Compact encoding: values left at their default aren't written, keeping the island under 4 KB.
+    func encode(to encoder: Encoder) throws {
+        var c = encoder.container(keyedBy: CodingKeys.self)
+        let d = SlotConfig()
+        try c.put(content, d.content, .content)
+        try c.put(text, d.text, .text)
+        try c.put(symbol, d.symbol, .symbol)
+        try c.put(colorHex, d.colorHex, .colorHex)
+        try c.put(color2Hex, d.color2Hex, .color2Hex)
+        try c.put(colorMode, d.colorMode, .colorMode)
+        try c.put(color3Hex, d.color3Hex, .color3Hex)
+        try c.put(gradientAngle, d.gradientAngle, .gradientAngle)
+        try c.put(useAccent, d.useAccent, .useAccent)
+        try c.put(scale, d.scale, .scale)
+        try c.put(offsetX, d.offsetX, .offsetX)
+        try c.put(shape, d.shape, .shape)
+        try c.put(anim, d.anim, .anim)
+        try c.put(speed, d.speed, .speed)
     }
 }
 
@@ -308,6 +518,21 @@ struct IslandState: Codable, Hashable {
     var expandedChips = false
     var expandedBar = false
     var islandBg: IslandBG = .none
+    var fontWeight = ""
+    var fontWidth = "standard"
+    var tracking: Double = 0
+    var glowStrength: Double = 1
+    var accentSync: AccentSync = .fixed
+    var expandedLayout: ExpandedLayout = .standard
+    var expandedTitleHex = ""
+    var expandedIcon = ""
+    var lockTitleHex = ""
+    var lockIcon = ""
+    var lockBgHex = "1C1C3AFF"
+    var lockBg2Hex = "4A1C6AFF"
+    var lockBarStyle: LockBar = .loop
+    var badgeStyle: BadgeStyle = .circle
+    var chipKinds: [String] = ["battery", "weather", "steps", "date"]
 
     // Live values the app keeps refreshing
     var frame = 0
@@ -341,15 +566,20 @@ struct IslandState: Codable, Hashable {
     var cryptoPrice: Double? = nil
     var cryptoChange: Double? = nil
     var worldTZ = ""
+    var slideData: Data? = nil
+    var buttonKinds: [String] = ["prev", "pause", "next"]
 
     enum CodingKeys: String, CodingKey {
         case left, right, minimal, expandedTitle, expandedSubtitle, keylineHex, fontDesign, bold, imageData
         case lockStyle, lockChips, lockAccent, lockLayout, lockOwnText, lockTitle, lockSubtitle
         case glow, expandedChips, expandedBar, islandBg
+        case fontWeight, fontWidth, tracking, glowStrength, accentSync, expandedLayout, expandedTitleHex, expandedIcon
+        case lockTitleHex, lockIcon, lockBgHex, lockBg2Hex, lockBarStyle, badgeStyle, chipKinds
         case frame, cycleStart, cycleEnd, sessionStart, now, battery, charging, paused, showButtons, bannerText
         case countdownTarget, musicTitle, musicArtist, musicPlaying, musicArt, steps, weatherTemp, weatherSymbol
         case rotatingText, counter, counterGoal, showCounterButtons, showTimerButton
         case pomoPhase, pomoStart, pomoEnd, daysSince, cryptoSymbol, cryptoPrice, cryptoChange, worldTZ
+        case slideData, buttonKinds
     }
 
     var design: Font.Design {
@@ -363,6 +593,9 @@ struct IslandState: Codable, Hashable {
 }
 
 extension IslandState {
+    /// Placeholder date used for saved styles (live dates are filled in when the island updates).
+    static let epoch = Date(timeIntervalSince1970: 0)
+
     init(from decoder: Decoder) throws {
         self.init()
         let c = try decoder.container(keyedBy: CodingKeys.self)
@@ -386,6 +619,21 @@ extension IslandState {
         expandedChips = c.value(.expandedChips, default: expandedChips)
         expandedBar = c.value(.expandedBar, default: expandedBar)
         islandBg = c.value(.islandBg, default: islandBg)
+        fontWeight = c.value(.fontWeight, default: fontWeight)
+        fontWidth = c.value(.fontWidth, default: fontWidth)
+        tracking = c.value(.tracking, default: tracking)
+        glowStrength = c.value(.glowStrength, default: glowStrength)
+        accentSync = c.value(.accentSync, default: accentSync)
+        expandedLayout = c.value(.expandedLayout, default: expandedLayout)
+        expandedTitleHex = c.value(.expandedTitleHex, default: expandedTitleHex)
+        expandedIcon = c.value(.expandedIcon, default: expandedIcon)
+        lockTitleHex = c.value(.lockTitleHex, default: lockTitleHex)
+        lockIcon = c.value(.lockIcon, default: lockIcon)
+        lockBgHex = c.value(.lockBgHex, default: lockBgHex)
+        lockBg2Hex = c.value(.lockBg2Hex, default: lockBg2Hex)
+        lockBarStyle = c.value(.lockBarStyle, default: lockBarStyle)
+        badgeStyle = c.value(.badgeStyle, default: badgeStyle)
+        chipKinds = c.value(.chipKinds, default: chipKinds)
         frame = c.value(.frame, default: frame)
         cycleStart = c.value(.cycleStart, default: cycleStart)
         cycleEnd = c.value(.cycleEnd, default: cycleEnd)
@@ -417,6 +665,82 @@ extension IslandState {
         cryptoPrice = c.optional(.cryptoPrice)
         cryptoChange = c.optional(.cryptoChange)
         worldTZ = c.value(.worldTZ, default: worldTZ)
+        slideData = c.optional(.slideData)
+        buttonKinds = c.value(.buttonKinds, default: buttonKinds)
+    }
+
+    // Compact encoding: values left at their default aren't written, keeping the island under 4 KB.
+    func encode(to encoder: Encoder) throws {
+        var c = encoder.container(keyedBy: CodingKeys.self)
+        let d = IslandState()
+        try c.put(left, d.left, .left)
+        try c.put(right, d.right, .right)
+        try c.put(minimal, d.minimal, .minimal)
+        try c.put(expandedTitle, d.expandedTitle, .expandedTitle)
+        try c.put(expandedSubtitle, d.expandedSubtitle, .expandedSubtitle)
+        try c.put(keylineHex, d.keylineHex, .keylineHex)
+        try c.put(fontDesign, d.fontDesign, .fontDesign)
+        try c.put(bold, d.bold, .bold)
+        try c.encodeIfPresent(imageData, forKey: .imageData)
+        try c.put(lockStyle, d.lockStyle, .lockStyle)
+        try c.put(lockChips, d.lockChips, .lockChips)
+        try c.put(lockAccent, d.lockAccent, .lockAccent)
+        try c.put(lockLayout, d.lockLayout, .lockLayout)
+        try c.put(lockOwnText, d.lockOwnText, .lockOwnText)
+        try c.put(lockTitle, d.lockTitle, .lockTitle)
+        try c.put(lockSubtitle, d.lockSubtitle, .lockSubtitle)
+        try c.put(glow, d.glow, .glow)
+        try c.put(expandedChips, d.expandedChips, .expandedChips)
+        try c.put(expandedBar, d.expandedBar, .expandedBar)
+        try c.put(islandBg, d.islandBg, .islandBg)
+        try c.put(fontWeight, d.fontWeight, .fontWeight)
+        try c.put(fontWidth, d.fontWidth, .fontWidth)
+        try c.put(tracking, d.tracking, .tracking)
+        try c.put(glowStrength, d.glowStrength, .glowStrength)
+        try c.put(accentSync, d.accentSync, .accentSync)
+        try c.put(expandedLayout, d.expandedLayout, .expandedLayout)
+        try c.put(expandedTitleHex, d.expandedTitleHex, .expandedTitleHex)
+        try c.put(expandedIcon, d.expandedIcon, .expandedIcon)
+        try c.put(lockTitleHex, d.lockTitleHex, .lockTitleHex)
+        try c.put(lockIcon, d.lockIcon, .lockIcon)
+        try c.put(lockBgHex, d.lockBgHex, .lockBgHex)
+        try c.put(lockBg2Hex, d.lockBg2Hex, .lockBg2Hex)
+        try c.put(lockBarStyle, d.lockBarStyle, .lockBarStyle)
+        try c.put(badgeStyle, d.badgeStyle, .badgeStyle)
+        try c.put(chipKinds, d.chipKinds, .chipKinds)
+        try c.put(frame, d.frame, .frame)
+        try c.putDate(cycleStart, .cycleStart)
+        try c.putDate(cycleEnd, .cycleEnd)
+        try c.putDate(sessionStart, .sessionStart)
+        try c.putDate(now, .now)
+        try c.put(battery, d.battery, .battery)
+        try c.put(charging, d.charging, .charging)
+        try c.put(paused, d.paused, .paused)
+        try c.put(showButtons, d.showButtons, .showButtons)
+        try c.put(bannerText, d.bannerText, .bannerText)
+        try c.putDate(countdownTarget, .countdownTarget)
+        try c.put(musicTitle, d.musicTitle, .musicTitle)
+        try c.put(musicArtist, d.musicArtist, .musicArtist)
+        try c.put(musicPlaying, d.musicPlaying, .musicPlaying)
+        try c.encodeIfPresent(musicArt, forKey: .musicArt)
+        try c.put(steps, d.steps, .steps)
+        try c.encodeIfPresent(weatherTemp, forKey: .weatherTemp)
+        try c.put(weatherSymbol, d.weatherSymbol, .weatherSymbol)
+        try c.put(rotatingText, d.rotatingText, .rotatingText)
+        try c.put(counter, d.counter, .counter)
+        try c.put(counterGoal, d.counterGoal, .counterGoal)
+        try c.put(showCounterButtons, d.showCounterButtons, .showCounterButtons)
+        try c.put(showTimerButton, d.showTimerButton, .showTimerButton)
+        try c.put(pomoPhase, d.pomoPhase, .pomoPhase)
+        try c.putDate(pomoStart, .pomoStart)
+        try c.putDate(pomoEnd, .pomoEnd)
+        try c.putDate(daysSince, .daysSince)
+        try c.put(cryptoSymbol, d.cryptoSymbol, .cryptoSymbol)
+        try c.encodeIfPresent(cryptoPrice, forKey: .cryptoPrice)
+        try c.encodeIfPresent(cryptoChange, forKey: .cryptoChange)
+        try c.put(worldTZ, d.worldTZ, .worldTZ)
+        try c.encodeIfPresent(slideData, forKey: .slideData)
+        try c.put(buttonKinds, d.buttonKinds, .buttonKinds)
     }
 
     func uses(_ content: SlotContent) -> Bool {
@@ -434,6 +758,7 @@ extension IslandState {
     /// Drops the heaviest optional data until the state fits ActivityKit's 4 KB limit (with a safety margin).
     mutating func fitToBudget(limit: Int = 3500) {
         if encodedSize > limit { musicArt = nil }
+        if encodedSize > limit { slideData = nil }
         if encodedSize > limit { imageData = nil }
         if encodedSize > limit {
             musicTitle = String(musicTitle.prefix(20))
@@ -457,12 +782,58 @@ extension IslandState {
     /// Accent color without its alpha, for badges, bars and buttons.
     var accentColor: Color { Color(hex: String(keylineHex.prefix(6))) }
 
-    /// Background behind the Lock Screen card.
+    var weightValue: Font.Weight {
+        switch fontWeight {
+        case "thin": return .thin
+        case "light": return .light
+        case "regular": return .regular
+        case "medium": return .medium
+        case "semibold": return .semibold
+        case "bold": return .bold
+        case "heavy": return .heavy
+        case "black": return .black
+        default: return bold ? .bold : .regular
+        }
+    }
+
+    var widthValue: Font.Width {
+        switch fontWidth {
+        case "condensed": return .condensed
+        case "compressed": return .compressed
+        case "expanded": return .expanded
+        default: return .standard
+        }
+    }
+
+    /// Slot size in the long-press view.
+    var expandedSlotSize: CGFloat {
+        switch expandedLayout {
+        case .standard: return 34
+        case .centered: return 26
+        case .big: return 44
+        }
+    }
+
+    /// Solid tint behind the Lock Screen card (iOS only takes one color here).
     var lockBackground: Color {
         switch lockStyle {
         case .black: return Color.black.opacity(0.92)
         case .tinted: return accentColor.darker(0.25)
         case .glass: return Color.black.opacity(0.28)
+        case .gradient: return accentColor.darker(0.3)
+        case .custom: return Color(hex: lockBgHex)
+        }
+    }
+
+    /// Gradient drawn inside the Lock Screen card for the Gradient and Custom styles.
+    var lockGradientColors: [Color]? {
+        switch lockStyle {
+        case .gradient:
+            return [accentColor.darker(0.5), accentColor.hueShifted(0.15).darker(0.28)]
+        case .custom:
+            return [Color(hex: lockBgHex), Color(hex: lockBg2Hex)]
+        default:
+            return nil
         }
     }
 
@@ -495,7 +866,40 @@ extension IslandState {
         s.expandedChips = expandedChips
         s.expandedBar = expandedBar
         s.islandBg = islandBg
+        s.fontWeight = fontWeight
+        s.fontWidth = fontWidth
+        s.tracking = tracking
+        s.glowStrength = glowStrength
+        s.accentSync = accentSync
+        s.expandedLayout = expandedLayout
+        s.expandedTitleHex = expandedTitleHex
+        s.expandedIcon = expandedIcon
+        s.lockTitleHex = lockTitleHex
+        s.lockIcon = lockIcon
+        s.lockBgHex = lockBgHex
+        s.lockBg2Hex = lockBg2Hex
+        s.lockBarStyle = lockBarStyle
+        s.badgeStyle = badgeStyle
+        s.chipKinds = chipKinds
+        // Fixed placeholder dates, so two copies of the same style compare equal.
+        s.cycleStart = IslandState.epoch
+        s.cycleEnd = IslandState.epoch
+        s.sessionStart = IslandState.epoch
+        s.now = IslandState.epoch
+        s.countdownTarget = IslandState.epoch
+        s.pomoStart = IslandState.epoch
+        s.pomoEnd = IslandState.epoch
+        s.daysSince = IslandState.epoch
         return s
+    }
+
+    /// True when two styles look the same (ignoring the photo).
+    func matchesStyle(_ other: IslandState) -> Bool {
+        var a = styleOnly()
+        var b = other.styleOnly()
+        a.imageData = nil
+        b.imageData = nil
+        return a == b
     }
 }
 
@@ -508,6 +912,22 @@ extension KeyedDecodingContainer {
 
     func optional<T: Decodable>(_ key: Key) -> T? {
         (try? decodeIfPresent(T.self, forKey: key)) ?? nil
+    }
+}
+
+extension KeyedEncodingContainer {
+    /// Writes the value only when it differs from the default.
+    mutating func put<T: Encodable & Equatable>(_ value: T, _ fallback: T, _ key: Key) throws {
+        if value != fallback {
+            try encode(value, forKey: key)
+        }
+    }
+
+    /// Writes a date unless it's the saved-style placeholder.
+    mutating func putDate(_ value: Date, _ key: Key) throws {
+        if value != IslandState.epoch {
+            try encode(value, forKey: key)
+        }
     }
 }
 

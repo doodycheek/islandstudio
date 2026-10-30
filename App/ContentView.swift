@@ -3,11 +3,15 @@ import SwiftUI
 
 /// Root: three tabs, with the chosen theme and accent applied everywhere.
 struct ContentView: View {
+    @EnvironmentObject var manager: IslandManager
     @AppStorage("themeMode") private var themeMode = ThemeMode.system.rawValue
     @AppStorage("accentChoice") private var accentChoice = AccentChoice.purple.rawValue
     @AppStorage("selectedTab") private var selectedTab = AppTab.studio.rawValue
 
-    private var accent: Color { (AccentChoice(rawValue: accentChoice) ?? .purple).color }
+    private var accent: Color {
+        let choice = AccentChoice(rawValue: accentChoice) ?? .purple
+        return choice == .island ? manager.config.accentColor : choice.color
+    }
 
     var body: some View {
         TabView(selection: $selectedTab) {
@@ -24,6 +28,39 @@ struct ContentView: View {
         .tint(accent)
         .environment(\.themeAccent, accent)
         .preferredColorScheme((ThemeMode(rawValue: themeMode) ?? .system).colorScheme)
+        .sensoryFeedback(.selection, trigger: manager.settings.currentPresetID)
+    }
+}
+
+// MARK: - Shared bindings
+
+extension IslandManager {
+    /// Two-way binding between a hex string in your style and a ColorPicker.
+    func colorBinding(_ keyPath: WritableKeyPath<IslandState, String>) -> Binding<Color> {
+        Binding(get: { Color(hex: self.config[keyPath: keyPath]) },
+                set: { self.config[keyPath: keyPath] = $0.hexString })
+    }
+
+    /// On/off for optional colors stored as hex ("" means automatic).
+    func customColorToggle(_ keyPath: WritableKeyPath<IslandState, String>) -> Binding<Bool> {
+        Binding(get: { !self.config[keyPath: keyPath].isEmpty },
+                set: { self.config[keyPath: keyPath] = $0 ? "FFFFFFFF" : "" })
+    }
+}
+
+/// Chips for choosing what the progress bar shows.
+struct BarStylePicker: View {
+    @Binding var style: LockBar
+
+    var body: some View {
+        HStack(spacing: 8) {
+            ForEach(LockBar.allCases) { option in
+                FilterChip(title: option.label, selected: style == option) {
+                    style = option
+                }
+            }
+            Spacer(minLength: 0)
+        }
     }
 }
 
@@ -62,136 +99,300 @@ struct IslandSettings: View {
     @EnvironmentObject var manager: IslandManager
     @AppStorage("selectedTab") private var selectedTab = AppTab.studio.rawValue
     @State private var photoItem: PhotosPickerItem?
+    @State private var paletteItem: PhotosPickerItem?
+    @State private var photoPalette: [String] = []
+    @State private var showSave = false
+    @State private var newName = ""
+
+    private let weights = ["thin", "light", "regular", "medium", "semibold", "bold", "heavy", "black"]
+
+    private var weightBinding: Binding<String> {
+        Binding(get: {
+            manager.config.fontWeight.isEmpty ? (manager.config.bold ? "bold" : "regular") : manager.config.fontWeight
+        }, set: { manager.config.fontWeight = $0 })
+    }
+
+    private var followBinding: Binding<Bool> {
+        Binding(get: { manager.slotsFollowAccent }, set: { manager.setSlotsFollowAccent($0) })
+    }
 
     var body: some View {
         let snapshot = manager.previewState(at: Date())
         VStack(spacing: 16) {
-            Card(title: "Presets", icon: "square.grid.2x2.fill", tint: .purple,
-                 actionTitle: "See all", action: { selectedTab = AppTab.presets.rawValue }) {
-                ScrollView(.horizontal, showsIndicators: false) {
-                    HStack(spacing: 10) {
-                        ForEach(PresetStore.builtIns + manager.savedPresets) { preset in
-                            PresetTile(preset: preset,
-                                       isCurrent: preset.id == manager.settings.currentPresetID,
-                                       state: manager.previewState(style: preset.style, at: Date())) {
-                                manager.apply(preset)
-                            }
-                        }
-                    }
-                }
-            }
+            presetsCard
+            colorsCard
+            layoutCard(snapshot)
+            textCard
+            backgroundCard
+            animationCard
+            photoCard
+        }
+        .onChange(of: photoItem) { _, item in
+            loadPhoto(item)
+        }
+        .onChange(of: paletteItem) { _, item in
+            loadPalette(item)
+        }
+        .alert("Save as a new preset", isPresented: $showSave) {
+            TextField("Name", text: $newName)
+            Button("Save") { manager.saveCurrentAsPreset(named: newName) }
+            Button("Cancel", role: .cancel) {}
+        }
+    }
 
-            Card(title: "Layout", icon: "rectangle.split.3x1.fill", tint: .blue,
-                 footer: "The minimal bubble shows when another app, like FaceTime, takes the main island.") {
-                NavigationLink {
-                    SlotEditor(title: "Left side", slot: $manager.config.left)
-                } label: {
-                    SlotNavLabel(title: "Left side", slot: manager.config.left, state: snapshot)
-                }
-                .buttonStyle(.plain)
-                RowDivider()
-                NavigationLink {
-                    SlotEditor(title: "Right side", slot: $manager.config.right)
-                } label: {
-                    SlotNavLabel(title: "Right side", slot: manager.config.right, state: snapshot)
-                }
-                .buttonStyle(.plain)
-                RowDivider()
-                NavigationLink {
-                    SlotEditor(title: "Minimal bubble", slot: $manager.config.minimal)
-                } label: {
-                    SlotNavLabel(title: "Minimal bubble", slot: manager.config.minimal, state: snapshot)
-                }
-                .buttonStyle(.plain)
-            }
-
-            Card(title: "Island background", icon: "rectangle.inset.filled", tint: .indigo,
-                 footer: "iOS keeps the island itself pure black so it blends into the camera, and apps can't change that. This adds a colored backing behind your icons and text, and inside the long-press view, using your accent color.") {
-                Picker("Background", selection: $manager.config.islandBg) {
-                    ForEach(IslandBG.allCases) { bg in
-                        Text(bg.label).tag(bg)
-                    }
-                }
-                .pickerStyle(.segmented)
-            }
-
-            Card(title: "Style", icon: "paintbrush.fill", tint: .pink,
-                 footer: "iOS only draws the island's outline faintly, and only in Dark Mode. Neon glow makes the island's own icons and text glow, which you can actually see.") {
+    private var presetsCard: some View {
+        Card(title: "Presets", icon: "square.grid.2x2.fill", tint: .purple,
+             actionTitle: "See all", action: { selectedTab = AppTab.presets.rawValue }) {
+            ScrollView(.horizontal, showsIndicators: false) {
                 HStack(spacing: 10) {
-                    IconBadge(systemName: "textformat", color: .indigo)
-                    Text("Font")
-                    Spacer()
-                    Picker("Font", selection: $manager.config.fontDesign) {
-                        Text("Default").tag("default")
-                        Text("Rounded").tag("rounded")
-                        Text("Mono").tag("monospaced")
-                        Text("Serif").tag("serif")
-                    }
-                    .pickerStyle(.menu)
-                    .labelsHidden()
-                }
-                RowDivider()
-                ToggleRow(title: "Bold", icon: "bold", color: .gray, isOn: $manager.config.bold)
-                RowDivider()
-                ToggleRow(title: "Neon glow", icon: "sparkle", color: .pink, isOn: $manager.config.glow)
-                RowDivider()
-                ColorPicker(selection: hexBinding(\.keylineHex)) {
-                    HStack(spacing: 10) {
-                        IconBadge(systemName: "paintpalette.fill", color: .orange)
-                        Text("Accent & outline")
-                    }
-                }
-            }
-
-            Card(title: "Animation", icon: "waveform.path.ecg", tint: .teal) {
-                VStack(alignment: .leading, spacing: 4) {
-                    HStack {
-                        Text("Step speed")
-                        Spacer()
-                        Text("\(manager.frameInterval, specifier: "%.1f")s").foregroundStyle(.secondary)
-                    }
-                    Slider(value: $manager.frameInterval, in: 0.5...5, step: 0.5)
-                }
-                VStack(alignment: .leading, spacing: 4) {
-                    HStack {
-                        Text("Ring & bar loop")
-                        Spacer()
-                        Text("\(manager.cycleLength, specifier: "%.0f")s").foregroundStyle(.secondary)
-                    }
-                    Slider(value: $manager.cycleLength, in: 1...10, step: 1)
-                }
-                if manager.isRunning {
-                    RowDivider()
-                    ToggleRow(title: "Pause animations", icon: "pause.fill", color: .yellow, isOn: $manager.paused)
-                }
-            }
-
-            Card(title: "My photo", icon: "photo.fill", tint: .green,
-                 footer: "Set any slot to My photo to use it. It's shrunk to a tiny icon to fit iOS's 4 KB limit.") {
-                HStack(spacing: 12) {
-                    if let data = manager.config.imageData, let ui = UIImage(data: data) {
-                        Image(uiImage: ui)
-                            .resizable()
-                            .frame(width: 44, height: 44)
-                            .clipShape(Circle())
-                    }
-                    PhotosPicker(selection: $photoItem, matching: .images) {
-                        Label(manager.config.imageData == nil ? "Choose a photo" : "Change photo",
-                              systemImage: "photo.on.rectangle")
-                            .font(.subheadline.weight(.semibold))
-                    }
-                    Spacer()
-                    if manager.config.imageData != nil {
-                        Button("Remove", role: .destructive) {
-                            manager.config.imageData = nil
+                    ForEach(manager.allPresets) { preset in
+                        PresetTile(preset: preset,
+                                   isCurrent: preset.id == manager.settings.currentPresetID,
+                                   state: manager.previewState(style: preset.style, at: Date())) {
+                            manager.apply(preset)
                         }
-                        .font(.subheadline)
+                    }
+                }
+            }
+            ScrollView(.horizontal, showsIndicators: false) {
+                HStack(spacing: 8) {
+                    PillButton(title: "Save as new", icon: "plus.square.on.square") {
+                        newName = ""
+                        showSave = true
+                    }
+                    if manager.hasUnsavedChanges, let current = manager.currentPreset {
+                        PillButton(title: "Update \(current.name)", icon: "arrow.triangle.2.circlepath") {
+                            manager.updatePreset(id: current.id)
+                        }
+                    }
+                    PillButton(title: "Back to default", icon: "house.fill") {
+                        manager.applyDefault()
+                    }
+                    PillButton(title: "Surprise me", icon: "shuffle") {
+                        manager.surprise()
                     }
                 }
             }
         }
-        .onChange(of: photoItem) { _, item in
-            loadPhoto(item)
+    }
+
+    private var colorsCard: some View {
+        Card(title: "Colors", icon: "paintpalette.fill", tint: .orange,
+             footer: "The accent colors the outline, glow, buttons, Lock Screen tint and every slot set to follow it. Pick where it comes from to make your whole island change color on its own.") {
+            ColorPicker(selection: manager.colorBinding(\.keylineHex)) {
+                HStack(spacing: 10) {
+                    IconBadge(systemName: "drop.fill", color: .orange)
+                    Text(manager.config.accentSync == .fixed ? "Accent color" : "Accent color (synced)")
+                }
+            }
+            .disabled(manager.config.accentSync != .fixed)
+            RowDivider()
+            HStack(spacing: 10) {
+                IconBadge(systemName: "arrow.triangle.2.circlepath", color: .teal)
+                Text("Accent comes from")
+                Spacer()
+                Picker("Accent comes from", selection: $manager.config.accentSync) {
+                    ForEach(AccentSync.allCases) { sync in
+                        Label(sync.label, systemImage: sync.icon).tag(sync)
+                    }
+                }
+                .pickerStyle(.menu)
+                .labelsHidden()
+            }
+            RowDivider()
+            ToggleRow(title: "All slots follow accent", icon: "link", color: .indigo, isOn: followBinding)
+            RowDivider()
+            Text("Palettes").font(.subheadline.weight(.medium))
+            ScrollView(.horizontal, showsIndicators: false) {
+                HStack(spacing: 8) {
+                    ForEach(ColorPalette.all) { palette in
+                        PaletteChip(palette: palette) { manager.applyPalette(palette) }
+                    }
+                }
+            }
+            RowDivider()
+            PhotosPicker(selection: $paletteItem, matching: .images) {
+                Label("Pick colors from a photo", systemImage: "eyedropper.halffull")
+                    .font(.subheadline.weight(.semibold))
+            }
+            if !photoPalette.isEmpty {
+                HStack(spacing: 10) {
+                    ForEach(photoPalette, id: \.self) { hex in
+                        Button {
+                            manager.config.accentSync = .fixed
+                            manager.config.keylineHex = hex
+                        } label: {
+                            Circle()
+                                .fill(Color(hex: hex))
+                                .frame(width: 30, height: 30)
+                                .overlay(Circle().strokeBorder(Color.primary.opacity(0.2), lineWidth: 1))
+                        }
+                        .buttonStyle(.plain)
+                    }
+                    Spacer()
+                    Button("Use all") {
+                        manager.applyPalette(ColorPalette(id: "photo", name: "Photo", colors: photoPalette))
+                    }
+                    .font(.subheadline.weight(.semibold))
+                }
+                Text("Tap a color to make it your accent, or use all of them.")
+                    .font(.caption)
+                    .foregroundStyle(.secondary)
+            }
+        }
+    }
+
+    private func layoutCard(_ snapshot: IslandState) -> some View {
+        Card(title: "Layout", icon: "rectangle.split.3x1.fill", tint: .blue,
+             footer: "Each slot has its own content, colors, size, shape and motion. The minimal bubble shows when another app, like FaceTime, takes the main island.") {
+            NavigationLink {
+                SlotEditor(title: "Left side", slot: $manager.config.left)
+            } label: {
+                SlotNavLabel(title: "Left side", slot: manager.config.left, state: snapshot)
+            }
+            .buttonStyle(.plain)
+            RowDivider()
+            NavigationLink {
+                SlotEditor(title: "Right side", slot: $manager.config.right)
+            } label: {
+                SlotNavLabel(title: "Right side", slot: manager.config.right, state: snapshot)
+            }
+            .buttonStyle(.plain)
+            RowDivider()
+            NavigationLink {
+                SlotEditor(title: "Minimal bubble", slot: $manager.config.minimal)
+            } label: {
+                SlotNavLabel(title: "Minimal bubble", slot: manager.config.minimal, state: snapshot)
+            }
+            .buttonStyle(.plain)
+        }
+    }
+
+    private func menuRow<P: View>(_ title: String, icon: String, color: Color,
+                                  @ViewBuilder picker: () -> P) -> some View {
+        HStack(spacing: 10) {
+            IconBadge(systemName: icon, color: color)
+            Text(title)
+            Spacer()
+            picker()
+                .pickerStyle(.menu)
+                .labelsHidden()
+        }
+    }
+
+    private var textCard: some View {
+        Card(title: "Text & glow", icon: "textformat", tint: .pink,
+             footer: "iOS only draws the island's own outline faintly, in Dark Mode. Neon glow makes your icons and text glow, which you can actually see.") {
+            menuRow("Font", icon: "textformat", color: .indigo) {
+                Picker("Font", selection: $manager.config.fontDesign) {
+                    Text("Default").tag("default")
+                    Text("Rounded").tag("rounded")
+                    Text("Mono").tag("monospaced")
+                    Text("Serif").tag("serif")
+                }
+            }
+            RowDivider()
+            menuRow("Weight", icon: "bold", color: .gray) {
+                Picker("Weight", selection: weightBinding) {
+                    ForEach(weights, id: \.self) { weight in
+                        Text(weight.capitalized).tag(weight)
+                    }
+                }
+            }
+            RowDivider()
+            menuRow("Width", icon: "arrow.left.and.right", color: .blue) {
+                Picker("Width", selection: $manager.config.fontWidth) {
+                    Text("Standard").tag("standard")
+                    Text("Condensed").tag("condensed")
+                    Text("Compressed").tag("compressed")
+                    Text("Expanded").tag("expanded")
+                }
+            }
+            RowDivider()
+            VStack(alignment: .leading, spacing: 4) {
+                HStack {
+                    Text("Letter spacing")
+                    Spacer()
+                    Text(String(format: "%.1f", manager.config.tracking)).foregroundStyle(.secondary)
+                }
+                Slider(value: $manager.config.tracking, in: -1...4, step: 0.5)
+            }
+            RowDivider()
+            ToggleRow(title: "Neon glow", icon: "sparkle", color: .pink, isOn: $manager.config.glow)
+            if manager.config.glow {
+                VStack(alignment: .leading, spacing: 4) {
+                    HStack {
+                        Text("Glow strength")
+                        Spacer()
+                        Text("\(Int((manager.config.glowStrength * 100).rounded()))%").foregroundStyle(.secondary)
+                    }
+                    Slider(value: $manager.config.glowStrength, in: 0.3...2, step: 0.1)
+                }
+            }
+        }
+    }
+
+    private var backgroundCard: some View {
+        Card(title: "Island background", icon: "rectangle.inset.filled", tint: .indigo,
+             footer: "iOS keeps the island itself pure black so it blends into the camera, and apps can't change that. This adds a colored backing behind your icons and text, and inside the long-press view, using your accent color.") {
+            Picker("Background", selection: $manager.config.islandBg) {
+                ForEach(IslandBG.allCases) { bg in
+                    Text(bg.label).tag(bg)
+                }
+            }
+            .pickerStyle(.segmented)
+        }
+    }
+
+    private var animationCard: some View {
+        Card(title: "Animation", icon: "waveform.path.ecg", tint: .teal,
+             footer: "Step speed is how often the island moves. Each slot can also have its own motion in its editor.") {
+            VStack(alignment: .leading, spacing: 4) {
+                HStack {
+                    Text("Step speed")
+                    Spacer()
+                    Text("\(manager.frameInterval, specifier: "%.1f")s").foregroundStyle(.secondary)
+                }
+                Slider(value: $manager.frameInterval, in: 0.5...5, step: 0.5)
+            }
+            VStack(alignment: .leading, spacing: 4) {
+                HStack {
+                    Text("Ring & bar loop")
+                    Spacer()
+                    Text("\(manager.cycleLength, specifier: "%.0f")s").foregroundStyle(.secondary)
+                }
+                Slider(value: $manager.cycleLength, in: 1...10, step: 1)
+            }
+            if manager.isRunning {
+                RowDivider()
+                ToggleRow(title: "Pause animations", icon: "pause.fill", color: .yellow, isOn: $manager.paused)
+            }
+        }
+    }
+
+    private var photoCard: some View {
+        Card(title: "My photo", icon: "photo.fill", tint: .green,
+             footer: "Set any slot to My photo to use it. It's shrunk to a tiny icon to fit iOS's 4 KB limit. For several photos, use Photo slideshow in Settings → Tools.") {
+            HStack(spacing: 12) {
+                if let data = manager.config.imageData, let ui = UIImage(data: data) {
+                    Image(uiImage: ui)
+                        .resizable()
+                        .frame(width: 44, height: 44)
+                        .clipShape(Circle())
+                }
+                PhotosPicker(selection: $photoItem, matching: .images) {
+                    Label(manager.config.imageData == nil ? "Choose a photo" : "Change photo",
+                          systemImage: "photo.on.rectangle")
+                        .font(.subheadline.weight(.semibold))
+                }
+                Spacer()
+                if manager.config.imageData != nil {
+                    Button("Remove", role: .destructive) {
+                        manager.config.imageData = nil
+                    }
+                    .font(.subheadline)
+                }
+            }
         }
     }
 
@@ -207,9 +408,15 @@ struct IslandSettings: View {
         }
     }
 
-    private func hexBinding(_ keyPath: WritableKeyPath<IslandState, String>) -> Binding<Color> {
-        Binding(get: { Color(hex: manager.config[keyPath: keyPath]) },
-                set: { manager.config[keyPath: keyPath] = $0.hexString })
+    private func loadPalette(_ item: PhotosPickerItem?) {
+        guard let item else { return }
+        Task {
+            if let data = try? await item.loadTransferable(type: Data.self), let image = UIImage(data: data) {
+                let colors = PaletteExtractor.palette(from: image)
+                photoPalette = colors
+                if colors.isEmpty { manager.status = "Couldn't read colors from that photo" }
+            }
+        }
     }
 }
 
@@ -218,31 +425,88 @@ struct IslandSettings: View {
 struct ExpandedSettings: View {
     @EnvironmentObject var manager: IslandManager
 
+    private func buttonBinding(_ index: Int) -> Binding<String> {
+        Binding(get: {
+            let buttons = manager.settings.expandedButtons
+            return index < buttons.count ? buttons[index] : "none"
+        }, set: { newValue in
+            var slots = (0..<3).map { i -> String in
+                let buttons = manager.settings.expandedButtons
+                return i < buttons.count ? buttons[i] : "none"
+            }
+            slots[index] = newValue
+            manager.settings.expandedButtons = slots
+        })
+    }
+
     var body: some View {
         VStack(spacing: 16) {
-            Card(title: "Text", icon: "textformat", tint: .blue,
+            Card(title: "Layout", icon: "rectangle.expand.vertical", tint: .blue,
                  footer: "Long-press the island to see the expanded view.") {
+                Picker("Layout", selection: $manager.config.expandedLayout) {
+                    ForEach(ExpandedLayout.allCases) { layout in
+                        Text(layout.label).tag(layout)
+                    }
+                }
+                .pickerStyle(.segmented)
+            }
+
+            Card(title: "Title", icon: "textformat", tint: .indigo) {
                 TextField("Title", text: $manager.config.expandedTitle)
                     .cardField()
                 TextField("Subtitle", text: $manager.config.expandedSubtitle)
                     .cardField()
+                ToggleRow(title: "Custom title color", icon: "paintbrush.fill", color: .pink,
+                          isOn: manager.customColorToggle(\.expandedTitleHex))
+                if !manager.config.expandedTitleHex.isEmpty {
+                    ColorPicker("Title color", selection: manager.colorBinding(\.expandedTitleHex))
+                }
+                Text("Title icon").font(.subheadline.weight(.medium))
+                IconStrip(symbol: $manager.config.expandedIcon)
             }
 
-            Card(title: "Extras", icon: "square.stack.3d.up.fill", tint: .indigo) {
-                ToggleRow(title: "Preset buttons", icon: "hand.tap.fill", color: .indigo,
+            Card(title: "Buttons", icon: "hand.tap.fill", tint: .purple,
+                 footer: "Pick up to three. Music buttons control the built-in Music app.") {
+                ToggleRow(title: "Show buttons", icon: "eye.fill", color: .purple,
                           isOn: $manager.settings.showIslandButtons)
-                RowDivider()
-                ToggleRow(title: "Counter + / − buttons", icon: "plus.circle.fill", color: .blue,
+                if manager.settings.showIslandButtons {
+                    ForEach(0..<3, id: \.self) { index in
+                        RowDivider()
+                        HStack {
+                            Text("Button \(index + 1)")
+                            Spacer()
+                            Picker("Button \(index + 1)", selection: buttonBinding(index)) {
+                                Text("None").tag("none")
+                                ForEach(ButtonKind.allCases) { kind in
+                                    Label(kind.label, systemImage: kind.icon).tag(kind.rawValue)
+                                }
+                            }
+                            .pickerStyle(.menu)
+                            .labelsHidden()
+                        }
+                    }
+                }
+            }
+
+            Card(title: "Extras", icon: "square.stack.3d.up.fill", tint: .teal,
+                 footer: "Info chips and the progress bar are shared with the Lock Screen. Pick up to four chips so they fit.") {
+                ToggleRow(title: "Counter + / − row", icon: "plus.circle.fill", color: .blue,
                           isOn: $manager.settings.counterButtons)
                 RowDivider()
                 ToggleRow(title: "Info chips", icon: "square.grid.2x2.fill", color: .teal,
                           isOn: $manager.config.expandedChips)
+                if manager.config.expandedChips {
+                    ChipPicker(kinds: $manager.config.chipKinds)
+                }
                 RowDivider()
-                ToggleRow(title: "Accent bar", icon: "minus.rectangle.fill", color: .orange,
+                ToggleRow(title: "Progress bar", icon: "minus.rectangle.fill", color: .orange,
                           isOn: $manager.config.expandedBar)
+                if manager.config.expandedBar {
+                    BarStylePicker(style: $manager.config.lockBarStyle)
+                }
             }
 
-            Card(title: "Pop-outs", icon: "rectangle.expand.vertical", tint: .orange,
+            Card(title: "Pop-outs", icon: "bell.badge.fill", tint: .orange,
                  footer: "Pop-outs briefly expand the island on their own. Headphones show the device name, because iOS doesn't share AirPods battery with apps. After tapping Test, swipe home within 5 seconds.") {
                 ToggleRow(title: "Charging pop-out", icon: "bolt.fill", color: .green,
                           isOn: $manager.settings.chargingMode)
@@ -281,7 +545,7 @@ struct LockSettings: View {
     var body: some View {
         VStack(spacing: 16) {
             Card(title: "Layout", icon: "rectangle.grid.1x2.fill", tint: .blue,
-                 footer: "Compact is one slim row and skips chips and the accent bar.") {
+                 footer: "Compact is one slim row and skips chips and the progress bar.") {
                 Picker("Layout", selection: $manager.config.lockLayout) {
                     ForEach(LockLayout.allCases) { layout in
                         Text(layout.label).tag(layout)
@@ -291,17 +555,33 @@ struct LockSettings: View {
             }
 
             Card(title: "Background", icon: "circle.lefthalf.filled", tint: .purple,
-                 footer: "Tinted uses your accent color. Glass lets your wallpaper show through.") {
-                Picker("Background", selection: $manager.config.lockStyle) {
-                    ForEach(LockStyle.allCases) { style in
+                 footer: "Tinted and Gradient use your accent color. Glass lets your wallpaper show through. Custom is your own two-color gradient.") {
+                ScrollView(.horizontal, showsIndicators: false) {
+                    HStack(spacing: 8) {
+                        ForEach(LockStyle.allCases) { style in
+                            FilterChip(title: style.label, selected: manager.config.lockStyle == style) {
+                                manager.config.lockStyle = style
+                            }
+                        }
+                    }
+                }
+                if manager.config.lockStyle == .custom {
+                    ColorPicker("Top color", selection: manager.colorBinding(\.lockBgHex))
+                    ColorPicker("Bottom color", selection: manager.colorBinding(\.lockBg2Hex))
+                }
+            }
+
+            Card(title: "Icon badges", icon: "app.badge.fill", tint: .pink) {
+                Picker("Badges", selection: $manager.config.badgeStyle) {
+                    ForEach(BadgeStyle.allCases) { style in
                         Text(style.label).tag(style)
                     }
                 }
                 .pickerStyle(.segmented)
             }
 
-            Card(title: "Text", icon: "textformat", tint: .pink) {
-                ToggleRow(title: "Own Lock Screen text", icon: "lock.fill", color: .pink,
+            Card(title: "Text", icon: "textformat", tint: .indigo) {
+                ToggleRow(title: "Own Lock Screen text", icon: "lock.fill", color: .indigo,
                           isOn: $manager.config.lockOwnText)
                 if manager.config.lockOwnText {
                     TextField("Lock Screen title", text: $manager.config.lockTitle)
@@ -313,15 +593,29 @@ struct LockSettings: View {
                         .font(.footnote)
                         .foregroundStyle(.secondary)
                 }
+                RowDivider()
+                ToggleRow(title: "Custom title color", icon: "paintbrush.fill", color: .pink,
+                          isOn: manager.customColorToggle(\.lockTitleHex))
+                if !manager.config.lockTitleHex.isEmpty {
+                    ColorPicker("Title color", selection: manager.colorBinding(\.lockTitleHex))
+                }
+                Text("Title icon").font(.subheadline.weight(.medium))
+                IconStrip(symbol: $manager.config.lockIcon)
             }
 
             Card(title: "Extras", icon: "sparkles", tint: .teal,
-                 footer: "Chips show battery and date, plus weather and steps once they're set up.") {
+                 footer: "Chips appear in the order you tap them; pick up to four so they fit. Chips without data yet (like weather before you set a location) stay hidden.") {
                 ToggleRow(title: "Info chips", icon: "square.grid.2x2.fill", color: .teal,
                           isOn: $manager.config.lockChips)
+                if manager.config.lockChips {
+                    ChipPicker(kinds: $manager.config.chipKinds)
+                }
                 RowDivider()
-                ToggleRow(title: "Animated accent bar", icon: "minus.rectangle.fill", color: .orange,
+                ToggleRow(title: "Progress bar", icon: "minus.rectangle.fill", color: .orange,
                           isOn: $manager.config.lockAccent)
+                if manager.config.lockAccent {
+                    BarStylePicker(style: $manager.config.lockBarStyle)
+                }
                 RowDivider()
                 NavigationLink {
                     LiveInfoSettingsView()
