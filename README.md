@@ -1,19 +1,21 @@
 # Island Studio
 
-Customizes what shows in the Dynamic Island using a Live Activity, with a
-background keep-alive so animations keep running.
+Customizes the Dynamic Island with a Live Activity, plus a background keep-alive so animations keep running.
 
-## Build on Windows (GitHub Actions)
-1. Create a new repo on github.com.
-2. Upload EVERYTHING in this folder (including the `.github` folder) to the repo.
-3. Go to the **Actions** tab → **Build IPA** → **Run workflow**.
-4. When it finishes (~5 min), open the run and download **IslandStudio-ipa**.
-5. Unzip it to get `IslandStudio.ipa`, then import into Feather and sign.
+## v1.2
+- UI overhaul: live preview pinned at the top of every screen (Island / Expanded / Lock Screen)
+- Redesigned Lock Screen: Tinted / Black / Glass, info chips, animated accent bar
+- When music plays: keep island, show the music, or let music take over
 
-## Feather tips
-- Don't enable any option that removes PlugIns/extensions (the island lives in one).
-- Keep the original bundle ID if you can.
+## v1.1
+- Live info: Now Playing (Apple Music), album art, music bars, steps, weather, countdown
+- Animations: scrolling text, charging mode + charging bar, gradients, color cycling, hourly pop-out
+- Island buttons (previous / pause / next) in the long-press view
+- Shortcuts actions: Start, Stop, Set Preset, Next/Previous Preset, Pause/Resume
+- Save your own presets, share them as codes, and auto-switch by time of day
 
-## On the phone
-- Open the app, pick a style, tap **Start island**.
-- Leave "Keep running in background" on, and don't swipe the app away.
+## Build (GitHub Actions)
+Push to main, or Actions → Build IPA → Run workflow. Download the IslandStudio-ipa artifact.
+
+## Feather
+Don't remove PlugIns/extensions. Keep the bundle ID the same so it installs as an update.

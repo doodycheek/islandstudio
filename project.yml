@@ -6,8 +6,8 @@ options:
 settings:
   base:
     SWIFT_VERSION: "5.0"
-    MARKETING_VERSION: "1.0"
-    CURRENT_PROJECT_VERSION: "1"
+    MARKETING_VERSION: "1.2"
+    CURRENT_PROJECT_VERSION: "3"
     CODE_SIGNING_ALLOWED: "NO"
     CODE_SIGNING_REQUIRED: "NO"
     CODE_SIGN_IDENTITY: ""
@@ -24,6 +24,7 @@ targets:
     settings:
       base:
         PRODUCT_BUNDLE_IDENTIFIER: com.islandstudio.app
+        SWIFT_ACTIVE_COMPILATION_CONDITIONS: "$(inherited) ISLAND_APP"
     info:
       path: Supporting/App-Info.plist
       properties:
@@ -35,6 +36,9 @@ targets:
         NSSupportsLiveActivities: true
         NSSupportsLiveActivitiesFrequentUpdates: true
         UISupportedInterfaceOrientations: [UIInterfaceOrientationPortrait]
+        NSAppleMusicUsageDescription: "Island Studio shows the song playing in the Music app on your Dynamic Island."
+        NSMotionUsageDescription: "Island Studio shows your step count on your Dynamic Island."
+        NSLocationWhenInUseUsageDescription: "Island Studio uses your location to show local weather on your Dynamic Island."
   IslandWidget:
     type: app-extension
     platform: iOS
