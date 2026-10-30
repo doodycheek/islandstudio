@@ -1,0 +1,46 @@
+name: Build IPA
+
+on:
+  workflow_dispatch:
+  push:
+    branches: [ main ]
+
+jobs:
+  build:
+    runs-on: macos-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Show Xcode version
+        run: xcodebuild -version
+
+      - name: Install XcodeGen
+        run: brew install xcodegen
+
+      - name: Generate Xcode project
+        run: xcodegen generate
+
+      - name: Build (unsigned, Feather signs it later)
+        run: |
+          set -o pipefail
+          xcodebuild \
+            -project IslandStudio.xcodeproj \
+            -target IslandStudio \
+            -configuration Release \
+            -sdk iphoneos \
+            SYMROOT="$PWD/build" \
+            CODE_SIGNING_ALLOWED=NO \
+            CODE_SIGNING_REQUIRED=NO \
+            CODE_SIGN_IDENTITY="" \
+            build
+
+      - name: Package IPA
+        run: |
+          mkdir -p Payload
+          cp -R build/Release-iphoneos/IslandStudio.app Payload/
+          zip -qry IslandStudio.ipa Payload
+
+      - uses: actions/upload-artifact@v4
+        with:
+          name: IslandStudio-ipa
+          path: IslandStudio.ipa
