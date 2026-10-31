@@ -1,4 +1,5 @@
 import Foundation
+import SwiftUI
 
 /// Time formatting that can force 12-hour or 24-hour, or follow your iPhone's setting.
 enum ClockFormat {
@@ -94,4 +95,25 @@ enum TextVars {
         }
         return out
     }
+}
+
+/// One quick-launch button: an emoji and the link it opens, stored as "emoji|url".
+struct QuickLink: Hashable {
+    let emoji: String
+    let url: String
+
+    init?(entry: String) {
+        let parts = entry.split(separator: "|", maxSplits: 1, omittingEmptySubsequences: false).map { String($0) }
+        guard parts.count == 2, !parts[1].isEmpty else { return nil }
+        emoji = parts[0].isEmpty ? "🔗" : parts[0]
+        url = parts[1]
+    }
+}
+
+extension IslandState {
+    /// nil means "follow my accent color".
+    var chipIconColor: Color? { chipIconHex.isEmpty ? nil : Color(hex: chipIconHex) }
+    var buttonColor: Color { buttonHex.isEmpty ? accentColor : Color(hex: buttonHex) }
+    var expandedIconColor: Color { expandedIconHex.isEmpty ? accentColor : Color(hex: expandedIconHex) }
+    var lockIconColor: Color { lockIconHex.isEmpty ? accentColor : Color(hex: lockIconHex) }
 }

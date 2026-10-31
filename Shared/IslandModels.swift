@@ -31,6 +31,7 @@ enum SlotContent: String, Codable, CaseIterable, Identifiable, Hashable {
     case clock, liveClock, date, battery, music, musicArt, steps, weather, countdown
     case daysCounter, moon, crypto, worldClock
     case nextEvent, network, lowPower, uv, rainChance, wind, airQuality, storage, volume, brightness, stepsRing
+    case analogClock, flipClock, heartBattery, bedtime
     case dayProgress, yearProgress
     case counter, pomodoro, messages, streak
     case ring, bar, timer, pulse, equalizer, spin, rainbow, marquee, musicBars, chargeBar, breathe, typewriter
@@ -44,7 +45,8 @@ enum SlotContent: String, Codable, CaseIterable, Identifiable, Hashable {
         case .clock, .liveClock, .date, .battery, .music, .musicArt, .steps, .weather, .countdown,
              .daysCounter, .moon, .crypto, .worldClock,
              .nextEvent, .network, .lowPower, .uv, .rainChance, .wind, .airQuality, .storage, .volume,
-             .brightness, .stepsRing, .dayProgress, .yearProgress:
+             .brightness, .stepsRing, .dayProgress, .yearProgress,
+             .analogClock, .flipClock, .heartBattery, .bedtime:
             return .info
         case .counter, .pomodoro, .messages, .streak:
             return .tools
@@ -88,6 +90,10 @@ enum SlotContent: String, Codable, CaseIterable, Identifiable, Hashable {
         case .stepsRing: return "Steps goal ring"
         case .dayProgress: return "Day progress"
         case .yearProgress: return "Year progress"
+        case .analogClock: return "Analog clock"
+        case .flipClock: return "Flip clock"
+        case .heartBattery: return "Heart battery"
+        case .bedtime: return "Bedtime countdown"
         case .counter: return "Tap counter"
         case .pomodoro: return "Focus timer"
         case .messages: return "Rotating messages"
@@ -141,6 +147,10 @@ enum SlotContent: String, Codable, CaseIterable, Identifiable, Hashable {
         case .stepsRing: return "figure.walk.circle.fill"
         case .dayProgress: return "sun.horizon.fill"
         case .yearProgress: return "calendar"
+        case .analogClock: return "clock.fill"
+        case .flipClock: return "rectangle.split.2x1.fill"
+        case .heartBattery: return "heart.fill"
+        case .bedtime: return "bed.double.fill"
         case .counter: return "plus.circle.fill"
         case .pomodoro: return "timer"
         case .messages: return "text.bubble.fill"
@@ -224,6 +234,14 @@ enum SlotContent: String, Codable, CaseIterable, Identifiable, Hashable {
             return "How much of today has gone by, as a ring."
         case .yearProgress:
             return "Which day of the year it is."
+        case .analogClock:
+            return "A little clock face with hands. Looks best bigger, in the long-press view."
+        case .flipClock:
+            return "Digits on little flip cards. Looks best in the long-press view and Lock Screen."
+        case .heartBattery:
+            return "A heart that empties as your battery drains. Green while charging, red when low."
+        case .bedtime:
+            return "Counts down to your bedtime. Set the time under Settings → Quiet hours & recap."
         case .streak:
             return "Days in a row you've hit your counter goal. Set the goal under Settings → Tools."
         case .breathe:
@@ -261,7 +279,7 @@ enum SlotContent: String, Codable, CaseIterable, Identifiable, Hashable {
     var isIconLike: Bool {
         switch self {
         case .symbol, .emoji, .image, .slideshow, .musicArt, .ring, .pulse, .spin, .rainbow, .equalizer, .musicBars,
-             .breathe, .stepsRing, .dayProgress, .network, .lowPower:
+             .breathe, .stepsRing, .dayProgress, .network, .lowPower, .analogClock, .heartBattery:
             return true
         default:
             return false
@@ -533,11 +551,15 @@ struct SlotConfig: Codable, Hashable {
     var caseStyle: String = ""
     var textShadow = false
     var textSpeed: Double = 1
+    var rotate: [String] = []
+    var rotateSeconds: Double = 4
+    var showWhen: String = ""
 
     enum CodingKeys: String, CodingKey {
         case content, text, symbol, colorHex, color2Hex, colorMode
         case color3Hex, gradientAngle, useAccent, scale, offsetX, shape, anim, speed
         case badge, badgeHex, caseStyle, textShadow, textSpeed
+        case rotate, rotateSeconds, showWhen
     }
 }
 
@@ -565,6 +587,9 @@ extension SlotConfig {
         caseStyle = c.value(.caseStyle, default: caseStyle)
         textShadow = c.value(.textShadow, default: textShadow)
         textSpeed = c.value(.textSpeed, default: textSpeed)
+        rotate = c.value(.rotate, default: rotate)
+        rotateSeconds = c.value(.rotateSeconds, default: rotateSeconds)
+        showWhen = c.value(.showWhen, default: showWhen)
     }
 
     // Compact encoding: values left at their default aren't written, keeping the island under 4 KB.
@@ -590,6 +615,9 @@ extension SlotConfig {
         try c.put(caseStyle, d.caseStyle, .caseStyle)
         try c.put(textShadow, d.textShadow, .textShadow)
         try c.put(textSpeed, d.textSpeed, .textSpeed)
+        try c.put(rotate, d.rotate, .rotate)
+        try c.put(rotateSeconds, d.rotateSeconds, .rotateSeconds)
+        try c.put(showWhen, d.showWhen, .showWhen)
     }
 }
 
@@ -687,6 +715,18 @@ struct IslandState: Codable, Hashable {
     var brightnessPct = -1
     var stepsGoal = 10_000
     var streak = 0
+    var chipIconHex = ""
+    var buttonHex = ""
+    var expandedIconHex = ""
+    var lockIconHex = ""
+    var aodLayout = "classic"
+    var aodSeconds = false
+    var aodTint = false
+    var aodChips = false
+    var expandedOrder: [String] = []
+    var links: [String] = []
+    var textScale = 1.0
+    var bedtimeMinute = 23 * 60
 
     enum CodingKeys: String, CodingKey {
         case left, right, minimal, expandedTitle, expandedSubtitle, keylineHex, fontDesign, bold, imageData
@@ -701,6 +741,8 @@ struct IslandState: Codable, Hashable {
         case slideData, buttonKinds
         case minimalRing, clockMode, lockAlign, graphKind, spark, reactions, nextEventTitle, nextEventStart, netType, lowPower
         case uv, rainChance, wind, aqi, storageGB, volume, brightnessPct, stepsGoal, streak
+        case chipIconHex, buttonHex, expandedIconHex, lockIconHex, aodLayout, aodSeconds, aodTint, aodChips
+        case expandedOrder, links, textScale, bedtimeMinute
     }
 
     var design: Font.Design {
@@ -807,6 +849,18 @@ extension IslandState {
         brightnessPct = c.value(.brightnessPct, default: brightnessPct)
         stepsGoal = c.value(.stepsGoal, default: stepsGoal)
         streak = c.value(.streak, default: streak)
+        chipIconHex = c.value(.chipIconHex, default: chipIconHex)
+        buttonHex = c.value(.buttonHex, default: buttonHex)
+        expandedIconHex = c.value(.expandedIconHex, default: expandedIconHex)
+        lockIconHex = c.value(.lockIconHex, default: lockIconHex)
+        aodLayout = c.value(.aodLayout, default: aodLayout)
+        aodSeconds = c.value(.aodSeconds, default: aodSeconds)
+        aodTint = c.value(.aodTint, default: aodTint)
+        aodChips = c.value(.aodChips, default: aodChips)
+        expandedOrder = c.value(.expandedOrder, default: expandedOrder)
+        links = c.value(.links, default: links)
+        textScale = c.value(.textScale, default: textScale)
+        bedtimeMinute = c.value(.bedtimeMinute, default: bedtimeMinute)
     }
 
     // Compact encoding: values left at their default aren't written, keeping the island under 4 KB.
@@ -900,6 +954,18 @@ extension IslandState {
         try c.put(brightnessPct, d.brightnessPct, .brightnessPct)
         try c.put(stepsGoal, d.stepsGoal, .stepsGoal)
         try c.put(streak, d.streak, .streak)
+        try c.put(chipIconHex, d.chipIconHex, .chipIconHex)
+        try c.put(buttonHex, d.buttonHex, .buttonHex)
+        try c.put(expandedIconHex, d.expandedIconHex, .expandedIconHex)
+        try c.put(lockIconHex, d.lockIconHex, .lockIconHex)
+        try c.put(aodLayout, d.aodLayout, .aodLayout)
+        try c.put(aodSeconds, d.aodSeconds, .aodSeconds)
+        try c.put(aodTint, d.aodTint, .aodTint)
+        try c.put(aodChips, d.aodChips, .aodChips)
+        try c.put(expandedOrder, d.expandedOrder, .expandedOrder)
+        try c.put(links, d.links, .links)
+        try c.put(textScale, d.textScale, .textScale)
+        try c.put(bedtimeMinute, d.bedtimeMinute, .bedtimeMinute)
     }
 
     func uses(_ content: SlotContent) -> Bool {
@@ -1047,6 +1113,15 @@ extension IslandState {
         s.badgeStyle = badgeStyle
         s.chipKinds = chipKinds
         s.minimalRing = minimalRing
+        s.chipIconHex = chipIconHex
+        s.buttonHex = buttonHex
+        s.expandedIconHex = expandedIconHex
+        s.lockIconHex = lockIconHex
+        s.aodLayout = aodLayout
+        s.aodSeconds = aodSeconds
+        s.aodTint = aodTint
+        s.aodChips = aodChips
+        s.expandedOrder = expandedOrder
         s.clockMode = clockMode
         s.lockAlign = lockAlign
         s.graphKind = graphKind

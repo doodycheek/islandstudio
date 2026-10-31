@@ -8,6 +8,7 @@ struct PresetsView: View {
     @State private var newName = ""
     @State private var showRename = false
     @State private var showArrange = false
+    @State private var sharePreset: SavedPreset?
     @State private var renameID = ""
     @State private var renameText = ""
 
@@ -116,6 +117,11 @@ struct PresetsView: View {
                                     Label("Copy share code", systemImage: "doc.on.doc")
                                 }
                                 Button {
+                                    sharePreset = preset
+                                } label: {
+                                    Label("Share as image", systemImage: "photo.on.rectangle")
+                                }
+                                Button {
                                     manager.moveToFront(preset.id)
                                 } label: {
                                     Label("Move to front", systemImage: "arrow.up.to.line")
@@ -155,6 +161,9 @@ struct PresetsView: View {
             .navigationTitle("Presets")
             .navigationDestination(isPresented: $showArrange) {
                 ArrangePresetsView()
+            }
+            .sheet(item: $sharePreset) { preset in
+                PresetShareSheet(preset: preset)
             }
             .navigationBarTitleDisplayMode(.inline)
             .pinnedPreview()

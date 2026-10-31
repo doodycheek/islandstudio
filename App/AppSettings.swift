@@ -97,6 +97,12 @@ struct AppSettings: Codable, Hashable {
     var bubbleSeconds = 30.0
     var bubbleHours = 2
     var bubbleUntil: Date? = nil
+    var quickLinks: [QuickLinkItem] = []
+    var chimeName = "default"
+    var reduceMotion = false
+    var highContrast = false
+    var textScale = 1.0
+    var bedtimeMinute = 23 * 60
 
     enum CodingKeys: String, CodingKey {
         case countdownTarget, useFahrenheit, latitude, longitude, chargingMode, chargingTakeover
@@ -113,6 +119,7 @@ struct AppSettings: Codable, Hashable {
         case quietEnabled, quietStartMinute, quietEndMinute, quietPresetID
         case recapEnabled, recapMinute, lastRecapDay, stepsGoal, streak, focusRoundsToday
         case haptics, showReactions, reactionEmojis, autoSave, autoStart, stayInBubble, bubbleSeconds, bubbleHours, bubbleUntil
+        case quickLinks, chimeName, reduceMotion, highContrast, textScale, bedtimeMinute
     }
 }
 
@@ -194,6 +201,12 @@ extension AppSettings {
         bubbleSeconds = c.value(.bubbleSeconds, default: bubbleSeconds)
         bubbleHours = c.value(.bubbleHours, default: bubbleHours)
         bubbleUntil = c.optional(.bubbleUntil)
+        quickLinks = c.value(.quickLinks, default: quickLinks)
+        chimeName = c.value(.chimeName, default: chimeName)
+        reduceMotion = c.value(.reduceMotion, default: reduceMotion)
+        highContrast = c.value(.highContrast, default: highContrast)
+        textScale = c.value(.textScale, default: textScale)
+        bedtimeMinute = c.value(.bedtimeMinute, default: bedtimeMinute)
     }
 }
 
@@ -354,4 +367,11 @@ enum Haptics {
         guard UserDefaults.standard.object(forKey: "hapticsOn") as? Bool ?? true else { return }
         UINotificationFeedbackGenerator().notificationOccurred(.success)
     }
+}
+
+/// One quick-launch button you set up in Settings.
+struct QuickLinkItem: Codable, Hashable, Identifiable {
+    var id = UUID().uuidString
+    var emoji = "🔗"
+    var url = ""
 }

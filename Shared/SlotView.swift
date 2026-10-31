@@ -506,6 +506,29 @@ struct SlotView: View {
                 .lineLimit(1)
                 .minimumScaleFactor(0.6)
 
+        case .analogClock:
+            AnalogClockView(date: state.now, color: tintColor, size: sz)
+
+        case .flipClock:
+            FlipClockView(text: ClockFormat.string(state.now, seconds: false, hour12: state.hour12),
+                          color: tintColor, size: sz)
+
+        case .heartBattery:
+            HeartBatteryView(level: state.battery, charging: state.charging, normal: tintColor, size: sz)
+
+        case .bedtime:
+            let nowParts = Calendar.current.dateComponents([.hour, .minute], from: state.now)
+            let nowMinute = (nowParts.hour ?? 0) * 60 + (nowParts.minute ?? 0)
+            let untilBed = (state.bedtimeMinute - nowMinute + 1440) % 1440
+            HStack(spacing: 3) {
+                Image(systemName: "bed.double.fill")
+                Text(untilBed == 0 ? "Now" : (untilBed >= 60 ? "\(untilBed / 60)h \(untilBed % 60)m" : "\(untilBed)m"))
+            }
+            .font(.system(size: sz * 0.6))
+            .foregroundStyle(paint)
+            .lineLimit(1)
+            .minimumScaleFactor(0.6)
+
         case .ring:
             ProgressView(timerInterval: cycleRange, countsDown: false) {
                 EmptyView()
@@ -835,7 +858,7 @@ struct LiveClockText: View {
         .multilineTextAlignment(.center)
         .lineLimit(1)
         .minimumScaleFactor(0.6)
-        .frame(width: size * (state.hour12 == true ? 6.6 : 5.2))
+        .frame(maxWidth: size * (state.hour12 == true ? 6.6 : 5.2))
     }
 
     /// 12-hour time that still ticks by itself: count up from midnight, noon, or yesterday's noon.
@@ -941,5 +964,100 @@ struct BreatheView: View {
         }
         .frame(width: size, height: size)
         .animation(.easeInOut(duration: Double(beats) - 0.2), value: inhale)
+    }
+}
+
+// MARK: - More clock faces and a heart battery
+
+/// A small clock face with hour and minute hands.
+struct AnalogClockView: View {
+    let date: Date
+    let color: Color
+    let size: CGFloat
+
+    private func hand(length: CGFloat, width: CGFloat, angle: Double) -> some View {
+        Capsule()
+            .fill(color)
+            .frame(width: width, height: size * length)
+            .offset(y: -size * length / 2)
+            .rotationEffect(.degrees(angle))
+    }
+
+    var body: some View {
+        let cal = Calendar.current
+        let hour = Double(cal.component(.hour, from: date) % 12)
+        let minute = Double(cal.component(.minute, from: date))
+        let second = Double(cal.component(.second, from: date))
+        ZStack {
+            Circle()
+                .stroke(color.opacity(0.9), lineWidth: max(1.2, size * 0.07))
+            hand(length: 0.27, width: max(1.5, size * 0.07), angle: (hour + minute / 60) / 12 * 360)
+            hand(length: 0.4, width: max(1.2, size * 0.05), angle: (minute + second / 60) / 60 * 360)
+            Circle()
+                .fill(color)
+                .frame(width: size * 0.1, height: size * 0.1)
+        }
+        .frame(width: size, height: size)
+    }
+}
+
+/// Digits on little flip cards.
+struct FlipClockView: View {
+    let text: String
+    let color: Color
+    let size: CGFloat
+
+    var body: some View {
+        HStack(spacing: size * 0.08) {
+            ForEach(Array(text.enumerated()), id: \.offset) { item in
+                let character = String(item.element)
+                if item.element.isNumber {
+                    Text(character)
+                        .font(.system(size: size * 0.6, weight: .bold, design: .rounded))
+                        .monospacedDigit()
+                        .foregroundStyle(color)
+                        .frame(width: size * 0.5, height: size * 0.8)
+                        .background(RoundedRectangle(cornerRadius: size * 0.12, style: .continuous).fill(color.opacity(0.2)))
+                        .overlay(Rectangle().fill(Color.black.opacity(0.55)).frame(height: 1))
+                } else if character == " " {
+                    Spacer().frame(width: size * 0.04)
+                } else {
+                    Text(character)
+                        .font(.system(size: size * 0.42, weight: .bold, design: .rounded))
+                        .foregroundStyle(color)
+                }
+            }
+        }
+        .fixedSize()
+    }
+}
+
+/// A heart that empties as the battery drains.
+struct HeartBatteryView: View {
+    let level: Int
+    let charging: Bool
+    let normal: Color
+    let size: CGFloat
+
+    var body: some View {
+        let fraction = level < 0 ? 1.0 : min(max(Double(level) / 100, 0), 1)
+        let color = BatteryGlyph.autoColor(level: level, charging: charging, normal: normal)
+        ZStack {
+            Image(systemName: "heart")
+                .font(.system(size: size * 0.9, weight: .bold))
+                .foregroundStyle(color.opacity(0.4))
+            Image(systemName: "heart.fill")
+                .font(.system(size: size * 0.9, weight: .bold))
+                .foregroundStyle(color)
+                .mask {
+                    GeometryReader { geo in
+                        VStack(spacing: 0) {
+                            Spacer(minLength: 0)
+                            Rectangle().frame(height: geo.size.height * CGFloat(fraction))
+                        }
+                    }
+                }
+        }
+        .frame(width: size, height: size)
     }
 }

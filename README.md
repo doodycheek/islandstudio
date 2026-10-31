@@ -2,6 +2,13 @@
 
 Customizes the Dynamic Island with a Live Activity, plus a background keep-alive so animations keep running.
 
+## v1.7.0
+- Redesign: glass cards, glowing toggles and sliders, floating tab bar, five app themes, animated loading screen
+- Slot chooser gallery with live previews; slots can rotate through several things and show only when a condition is true
+- Always-On Display editor, AM/PM no longer clips into the camera, chips always show (dash until data loads), Live data screen
+- Icon colors for buttons, chips and title icons; analog clock, flip clock, heart battery, bedtime countdown
+- Quick launch row, reorderable long-press view, pop-out sound packs, share a preset as an image, accessibility options
+
 ## v1.6.5
 - Fixed the build: the Days widget now takes year, month and day numbers (the date picker needs iOS 18)
 

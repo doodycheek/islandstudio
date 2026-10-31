@@ -60,18 +60,24 @@ extension EnvironmentValues {
     }
 }
 
-/// Soft accent-tinted background behind every screen.
+/// The canvas behind every screen: a deep gradient with soft glowing color blobs.
 struct ThemeBackground: View {
     @Environment(\.themeAccent) private var accent
-    @Environment(\.colorScheme) private var scheme
+    @Environment(\.appTheme) private var theme
 
     var body: some View {
         ZStack {
-            Color(.systemGroupedBackground)
-            LinearGradient(colors: [accent.opacity(scheme == .dark ? 0.32 : 0.20), Color.clear],
-                           startPoint: .top, endPoint: .center)
-            RadialGradient(colors: [accent.opacity(scheme == .dark ? 0.22 : 0.12), Color.clear],
-                           center: .bottomTrailing, startRadius: 10, endRadius: 460)
+            LinearGradient(colors: [theme.top, theme.bottom], startPoint: .top, endPoint: .bottom)
+            Circle()
+                .fill((theme.blobA ?? accent).opacity(theme.isLight ? 0.30 : 0.38))
+                .frame(width: 420, height: 420)
+                .blur(radius: 110)
+                .offset(x: -150, y: -300)
+            Circle()
+                .fill((theme.blobB ?? accent).opacity(theme.isLight ? 0.22 : 0.26))
+                .frame(width: 380, height: 380)
+                .blur(radius: 120)
+                .offset(x: 170, y: 320)
         }
         .ignoresSafeArea()
     }
@@ -88,13 +94,15 @@ extension View {
     func cardField() -> some View {
         padding(.horizontal, 12)
             .padding(.vertical, 10)
-            .background(RoundedRectangle(cornerRadius: 12, style: .continuous).fill(Color(.tertiarySystemFill)))
+            .background(RoundedRectangle(cornerRadius: 14, style: .continuous).fill(Color.primary.opacity(0.07)))
+            .overlay(RoundedRectangle(cornerRadius: 14, style: .continuous)
+                .strokeBorder(Color.primary.opacity(0.08), lineWidth: 1))
     }
 }
 
 // MARK: - Building blocks
 
-/// A glassy rounded card with a colored icon header.
+/// A glass card with a glowing icon header.
 struct Card<Content: View>: View {
     let title: String
     let icon: String
@@ -103,6 +111,7 @@ struct Card<Content: View>: View {
     let actionTitle: String?
     let action: (() -> Void)?
     let content: Content
+    @Environment(\.appTheme) private var theme
 
     init(title: String, icon: String, tint: Color, footer: String? = nil,
          actionTitle: String? = nil, action: (() -> Void)? = nil,
@@ -117,29 +126,34 @@ struct Card<Content: View>: View {
     }
 
     var body: some View {
-        VStack(alignment: .leading, spacing: 12) {
-            HStack(spacing: 8) {
-                IconBadge(systemName: icon, color: tint, size: 24)
-                Text(title).font(.headline)
+        VStack(alignment: .leading, spacing: 14) {
+            HStack(spacing: 10) {
+                IconBadge(systemName: icon, color: tint, size: 30)
+                Text(title).font(.system(size: 18, weight: .bold, design: .rounded))
                 Spacer()
                 if let actionTitle, let action {
-                    Button(actionTitle, action: action)
-                        .font(.subheadline.weight(.semibold))
+                    Button(action: action) {
+                        Text(actionTitle)
+                            .font(.system(size: 13, weight: .bold, design: .rounded))
+                            .padding(.horizontal, 12)
+                            .padding(.vertical, 6)
+                            .background(Capsule().fill(tint.opacity(0.22)))
+                            .foregroundStyle(tint)
+                    }
+                    .buttonStyle(.plain)
                 }
             }
             content
             if let footer {
                 Text(footer)
-                    .font(.footnote)
+                    .font(.system(size: 13))
                     .foregroundStyle(.secondary)
                     .fixedSize(horizontal: false, vertical: true)
             }
         }
-        .padding(16)
+        .padding(18)
         .frame(maxWidth: .infinity, alignment: .leading)
-        .background(RoundedRectangle(cornerRadius: 22, style: .continuous).fill(.regularMaterial))
-        .overlay(RoundedRectangle(cornerRadius: 22, style: .continuous)
-            .strokeBorder(Color.primary.opacity(0.07), lineWidth: 1))
+        .background(GlassBackground(radius: 28, theme: theme, tint: tint))
     }
 }
 
@@ -154,7 +168,10 @@ struct IconBadge: View {
             .font(.system(size: size * 0.5, weight: .semibold))
             .foregroundStyle(.white)
             .frame(width: size, height: size)
-            .background(RoundedRectangle(cornerRadius: size * 0.28, style: .continuous).fill(color.gradient))
+            .background(RoundedRectangle(cornerRadius: size * 0.3, style: .continuous)
+                .fill(LinearGradient(colors: [color.opacity(0.95), color.opacity(0.65)],
+                                     startPoint: .topLeading, endPoint: .bottomTrailing)))
+            .shadow(color: color.opacity(0.45), radius: 6, y: 2)
     }
 }
 
@@ -168,9 +185,10 @@ struct ToggleRow: View {
         Toggle(isOn: $isOn) {
             HStack(spacing: 10) {
                 IconBadge(systemName: icon, color: color)
-                Text(title)
+                Text(title).font(.system(size: 16, weight: .medium, design: .rounded))
             }
         }
+        .toggleStyle(GlowToggleStyle())
     }
 }
 
@@ -215,7 +233,15 @@ struct FilterChip: View {
                 .font(.subheadline.weight(.semibold))
                 .padding(.horizontal, 14)
                 .padding(.vertical, 7)
-                .background(Capsule().fill(selected ? AnyShapeStyle(accent) : AnyShapeStyle(Material.regularMaterial)))
+                .background(
+                    Capsule()
+                        .fill(selected
+                              ? AnyShapeStyle(LinearGradient(colors: [accent.opacity(0.85), accent],
+                                                             startPoint: .topLeading, endPoint: .bottomTrailing))
+                              : AnyShapeStyle(Color.primary.opacity(0.08)))
+                        .shadow(color: selected ? accent.opacity(0.5) : Color.clear, radius: 6)
+                )
+                .overlay(Capsule().strokeBorder(Color.primary.opacity(selected ? 0 : 0.1), lineWidth: 1))
                 .foregroundStyle(selected ? Color.white : Color.primary)
         }
         .buttonStyle(.plain)
@@ -235,7 +261,8 @@ struct PillButton: View {
                 .lineLimit(1)
                 .padding(.horizontal, 11)
                 .padding(.vertical, 8)
-                .background(Capsule().fill(Color(.tertiarySystemFill)))
+                .background(Capsule().fill(Color.primary.opacity(0.08)))
+                .overlay(Capsule().strokeBorder(Color.primary.opacity(0.1), lineWidth: 1))
         }
         .buttonStyle(.plain)
     }
@@ -255,7 +282,9 @@ struct WideButton: View {
                 .minimumScaleFactor(0.8)
                 .frame(maxWidth: .infinity)
                 .padding(.vertical, 10)
-                .background(RoundedRectangle(cornerRadius: 12, style: .continuous).fill(Color(.tertiarySystemFill)))
+                .background(RoundedRectangle(cornerRadius: 14, style: .continuous).fill(Color.primary.opacity(0.08)))
+                .overlay(RoundedRectangle(cornerRadius: 14, style: .continuous)
+                    .strokeBorder(Color.primary.opacity(0.1), lineWidth: 1))
         }
         .buttonStyle(.plain)
     }

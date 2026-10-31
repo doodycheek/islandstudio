@@ -8,6 +8,7 @@ struct SettingsView: View {
     @State private var exportDocument = BackupDocument(data: Data())
     @AppStorage("themeMode") private var themeMode = ThemeMode.system.rawValue
     @AppStorage("accentChoice") private var accentChoice = AccentChoice.purple.rawValue
+    @AppStorage("appTheme") private var appThemeName = AppTheme.midnight.rawValue
 
     private var version: String {
         (Bundle.main.infoDictionary?["CFBundleShortVersionString"] as? String) ?? ""
@@ -23,6 +24,9 @@ struct SettingsView: View {
                     dataCard
                     backgroundCard
                     calmCard
+                    SoundCard()
+                    QuickLinksCard()
+                    AccessibilityCard()
                     healthCard
                     backupCard
                     shortcutsCard
@@ -65,12 +69,34 @@ struct SettingsView: View {
     private var appearanceCard: some View {
         Card(title: "Appearance", icon: "paintbrush.pointed.fill", tint: .purple,
              footer: "The first swatch makes the app match your island's accent color.") {
-            Picker("Theme", selection: $themeMode) {
-                ForEach(ThemeMode.allCases) { mode in
-                    Text(mode.label).tag(mode.rawValue)
+            Text("App theme").font(.system(size: 15, weight: .semibold, design: .rounded))
+            ScrollView(.horizontal, showsIndicators: false) {
+                HStack(spacing: 10) {
+                    ForEach(AppTheme.allCases) { pack in
+                        Button {
+                            withAnimation(.easeInOut(duration: 0.25)) { appThemeName = pack.rawValue }
+                        } label: {
+                            VStack(spacing: 8) {
+                                ZStack {
+                                    RoundedRectangle(cornerRadius: 14, style: .continuous)
+                                        .fill(LinearGradient(colors: [pack.top, pack.bottom], startPoint: .top, endPoint: .bottom))
+                                    Image(systemName: pack.icon)
+                                        .font(.system(size: 20, weight: .semibold))
+                                        .foregroundStyle(pack.blobA ?? (pack.isLight ? Color.black : Color.white))
+                                }
+                                .frame(width: 76, height: 56)
+                                .overlay(RoundedRectangle(cornerRadius: 14, style: .continuous)
+                                    .strokeBorder(appThemeName == pack.rawValue ? Color.accentColor : Color.primary.opacity(0.15),
+                                                  lineWidth: appThemeName == pack.rawValue ? 2.5 : 1))
+                                Text(pack.label).font(.system(size: 12, weight: .semibold, design: .rounded))
+                            }
+                        }
+                        .buttonStyle(.plain)
+                    }
                 }
+                .padding(.vertical, 4)
             }
-            .pickerStyle(.segmented)
+            RowDivider()
             Text("App color").font(.subheadline.weight(.medium))
             ScrollView(.horizontal, showsIndicators: false) {
                 HStack(spacing: 8) {
@@ -230,6 +256,8 @@ struct SettingsView: View {
             if manager.settings.recapEnabled {
                 DatePicker("Show at", selection: minuteBinding(\.recapMinute), displayedComponents: .hourAndMinute)
             }
+            RowDivider()
+            DatePicker("Bedtime", selection: minuteBinding(\.bedtimeMinute), displayedComponents: .hourAndMinute)
             RowDivider()
             Stepper("Step goal: \(manager.settings.stepsGoal.formatted())", value: $manager.settings.stepsGoal,
                     in: 2000...30000, step: 500)

@@ -23,12 +23,12 @@ struct IslandLiveActivity: Widget {
             let s = context.state
             return DynamicIsland {
                 DynamicIslandExpandedRegion(.leading) {
-                    SlotView(slot: s.left, state: s, size: s.expandedSlotSize)
+                    ExpandedSlot(slot: s.left, state: s, alignment: .leading)
                         .islandPanel(s)
                         .padding(.leading, 4)
                 }
                 DynamicIslandExpandedRegion(.trailing) {
-                    SlotView(slot: s.right, state: s, size: s.expandedSlotSize)
+                    ExpandedSlot(slot: s.right, state: s, alignment: .trailing)
                         .islandPanel(s)
                         .padding(.trailing, 4)
                 }

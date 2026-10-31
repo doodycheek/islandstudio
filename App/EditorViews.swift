@@ -41,19 +41,15 @@ struct PinnedPreview: View {
             }
             .frame(height: 128)
 
-            Picker("Preview", selection: $previewMode) {
-                ForEach(PreviewMode.allCases) { m in
-                    Text(m.label).tag(m.rawValue)
-                }
-            }
-            .pickerStyle(.segmented)
+            SegmentedPills(selection: $previewMode,
+                           options: PreviewMode.allCases.map { ($0.rawValue, $0.label) })
 
             StatusLine()
         }
         .padding(.horizontal, 16)
         .padding(.top, 4)
         .padding(.bottom, 8)
-        .background(.bar)
+        .background(.ultraThinMaterial)
         .overlay(alignment: .bottom) { Divider() }
     }
 }
@@ -78,6 +74,9 @@ struct StatusLine: View {
         HStack(spacing: 6) {
             Circle().fill(dotColor).frame(width: 7, height: 7)
             Text(stateText).font(.caption.weight(.semibold))
+            if manager.isStarting {
+                ProgressView().controlSize(.mini)
+            }
             if !manager.status.isEmpty {
                 Text("· \(manager.status)")
                     .font(.caption)
@@ -220,13 +219,13 @@ struct ExpandedPreview: View {
     var body: some View {
         VStack(spacing: 8) {
             HStack(alignment: .center, spacing: 8) {
-                SlotView(slot: state.left, state: state, size: state.expandedSlotSize * 0.88)
+                ExpandedSlot(slot: state.left, state: state, alignment: .leading, scale: 0.88)
                     .islandPanel(state)
                     .frame(width: 84, alignment: .leading)
                 Spacer(minLength: 0)
                 ExpandedTitle(state: state)
                 Spacer(minLength: 0)
-                SlotView(slot: state.right, state: state, size: state.expandedSlotSize * 0.88)
+                ExpandedSlot(slot: state.right, state: state, alignment: .trailing, scale: 0.88)
                     .islandPanel(state)
                     .frame(width: 84, alignment: .trailing)
             }
@@ -252,6 +251,7 @@ struct SlotEditor: View {
     var music = false
     @State private var showIcons = false
     @State private var showBadgeIcons = false
+    @State private var showChooser = false
 
     private let quickSymbols = ["heart.fill", "star.fill", "bolt.fill", "flame.fill", "moon.fill",
                                 "sparkles", "music.note", "car.fill", "gamecontroller.fill",
@@ -278,27 +278,43 @@ struct SlotEditor: View {
     }
 
     var body: some View {
-        Form {
-            Section {
-                Picker("Show", selection: $slot.content) {
-                    ForEach(SlotCategory.allCases) { category in
-                        Section(category.title) {
-                            ForEach(category.items) { item in
-                                Label(item.label, systemImage: item.icon).tag(item)
-                            }
+        ScrollView {
+            VStack(spacing: 14) {
+            GSection {
+                Button {
+                    showChooser = true
+                } label: {
+                    HStack(spacing: 12) {
+                        Image(systemName: slot.content.icon)
+                            .font(.title3)
+                            .frame(width: 42, height: 42)
+                            .background(RoundedRectangle(cornerRadius: 12, style: .continuous).fill(accent.opacity(0.2)))
+                        VStack(alignment: .leading, spacing: 2) {
+                            Text(slot.content.label)
+                                .font(.system(size: 17, weight: .semibold, design: .rounded))
+                                .foregroundStyle(.primary)
+                            Text("Tap to see everything it can show")
+                                .font(.caption)
+                                .foregroundStyle(.secondary)
                         }
+                        Spacer()
+                        Image(systemName: "chevron.right")
+                            .font(.footnote.weight(.semibold))
+                            .foregroundStyle(.tertiary)
                     }
+                    .contentShape(Rectangle())
                 }
-                .pickerStyle(.navigationLink)
+                .buttonStyle(.plain)
                 if let hint = slot.content.hint {
                     Text(hint).font(.footnote).foregroundStyle(.secondary)
                 }
             }
 
             if showsTextControls {
-                Section {
+                GSection {
                     if slot.content.usesText {
                         TextField(slot.content.textPlaceholder, text: $slot.text)
+                            .cardField()
                     }
                     Picker("Letters", selection: $slot.caseStyle) {
                         Text("Normal").tag("")
@@ -314,7 +330,7 @@ struct SlotEditor: View {
                                 Spacer()
                                 Text("\(Int(slot.textSpeed.rounded()))x").foregroundStyle(.secondary)
                             }
-                            Slider(value: $slot.textSpeed, in: 1...4, step: 1)
+                            GlowSlider(value: $slot.textSpeed, in: 1...4, step: 1)
                         }
                     }
                 } header: {
@@ -325,7 +341,7 @@ struct SlotEditor: View {
             }
 
             if slot.content.usesSymbol {
-                Section {
+                GSection {
                     Button {
                         showIcons = true
                     } label: {
@@ -371,6 +387,7 @@ struct SlotEditor: View {
                         TextField("SF Symbol name", text: $slot.symbol)
                             .textInputAutocapitalization(.never)
                             .autocorrectionDisabled()
+                            .cardField()
                     }
                 } header: {
                     Text("Icon")
@@ -381,14 +398,14 @@ struct SlotEditor: View {
                 colorSection
             }
 
-            Section {
+            GSection {
                 VStack(alignment: .leading, spacing: 4) {
                     HStack {
                         Text("Size")
                         Spacer()
                         Text("\(Int((slot.scale * 100).rounded()))%").foregroundStyle(.secondary)
                     }
-                    Slider(value: $slot.scale, in: 0.6...1.6, step: 0.05)
+                    GlowSlider(value: $slot.scale, in: 0.6...1.6, step: 0.05)
                 }
                 VStack(alignment: .leading, spacing: 4) {
                     HStack {
@@ -396,7 +413,7 @@ struct SlotEditor: View {
                         Spacer()
                         Text("\(Int(slot.offsetX)) pt").foregroundStyle(.secondary)
                     }
-                    Slider(value: $slot.offsetX, in: -12...12, step: 1)
+                    GlowSlider(value: $slot.offsetX, in: -12...12, step: 1)
                 }
                 Picker("Shape", selection: $slot.shape) {
                     ForEach(SlotShape.allCases) { shape in
@@ -416,7 +433,7 @@ struct SlotEditor: View {
                 Text("Shapes add a soft colored backing behind the slot. Big sizes can get clipped by the island's edges.")
             }
 
-            Section {
+            GSection {
                 if slot.badge.isEmpty {
                     Button {
                         slot.badge = "circle.fill"
@@ -449,7 +466,63 @@ struct SlotEditor: View {
                 Text("A small icon in the corner of this slot, like a red dot or a heart.")
             }
 
-            Section {
+            GSection {
+                ScrollView(.horizontal, showsIndicators: false) {
+                    HStack(spacing: 8) {
+                        ForEach(SlotContent.allCases.filter { $0 != .empty && $0 != slot.content }) { item in
+                            FilterChip(title: item.label, selected: slot.rotate.contains(item.rawValue)) {
+                                if let index = slot.rotate.firstIndex(of: item.rawValue) {
+                                    slot.rotate.remove(at: index)
+                                } else {
+                                    slot.rotate.append(item.rawValue)
+                                }
+                            }
+                        }
+                    }
+                }
+                if !slot.rotate.isEmpty {
+                    VStack(alignment: .leading, spacing: 4) {
+                        HStack {
+                            Text("Switch every")
+                            Spacer()
+                            Text("\(Int(slot.rotateSeconds))s").foregroundStyle(.secondary)
+                        }
+                        GlowSlider(value: $slot.rotateSeconds, in: 2...20, step: 1)
+                    }
+                }
+            } header: {
+                Text("Rotate with")
+            } footer: {
+                Text("Pick more things and this slot cycles through them, using the same color and look.")
+            }
+
+            GSection {
+                HStack {
+                    Text("Show this slot")
+                    Spacer()
+                    Picker("When", selection: $slot.showWhen) {
+                        Text("Always").tag("")
+                        Text("Only while charging").tag("charging")
+                        Text("Only when not charging").tag("notCharging")
+                        Text("Only when battery is low").tag("lowBattery")
+                        Text("Only at night").tag("night")
+                        Text("Only during the day").tag("day")
+                        Text("Only while music plays").tag("music")
+                        Text("Only on weekends").tag("weekend")
+                        Text("Only on Wi-Fi").tag("wifi")
+                        Text("Only on cellular").tag("cellular")
+                        Text("Only during a focus round").tag("focus")
+                    }
+                    .pickerStyle(.menu)
+                    .labelsHidden()
+                }
+            } header: {
+                Text("Show only when")
+            } footer: {
+                Text("A hidden slot stays empty on the island. This preview always shows it so you can keep editing.")
+            }
+
+            GSection {
                 Picker("Animation", selection: $slot.anim) {
                     ForEach(SlotAnim.allCases) { anim in
                         Text(anim.label).tag(anim)
@@ -462,7 +535,7 @@ struct SlotEditor: View {
                             Spacer()
                             Text(String(format: "%.2gx", slot.speed)).foregroundStyle(.secondary)
                         }
-                        Slider(value: $slot.speed, in: 0.5...2, step: 0.25)
+                        GlowSlider(value: $slot.speed, in: 0.5...2, step: 0.25)
                     }
                 }
             } header: {
@@ -470,12 +543,17 @@ struct SlotEditor: View {
             } footer: {
                 Text("Adds movement to anything in this slot. Speed also changes the Pulse, Spin and Rainbow slots.")
             }
+            }
+            .padding(16)
         }
-        .themedForm()
+        .background(ThemeBackground())
         .navigationTitle(title)
         .navigationBarTitleDisplayMode(.inline)
         .pinnedPreview(music: music)
         .onAppear { previewMode = PreviewMode.island.rawValue }
+        .sheet(isPresented: $showChooser) {
+            SlotChooserSheet(selection: $slot.content, base: slot)
+        }
         .sheet(isPresented: $showIcons) {
             IconPickerView(symbol: $slot.symbol)
         }
@@ -489,7 +567,7 @@ struct SlotEditor: View {
     }
 
     @ViewBuilder private var colorSection: some View {
-        Section {
+        GSection {
             Toggle("Follow accent color", isOn: $slot.useAccent)
             if !slot.useAccent {
                 Picker("Color style", selection: $slot.colorMode) {
@@ -514,7 +592,7 @@ struct SlotEditor: View {
                             Spacer()
                             Text("\(Int(slot.gradientAngle))°").foregroundStyle(.secondary)
                         }
-                        Slider(value: $slot.gradientAngle, in: 0...360, step: 15)
+                        GlowSlider(value: $slot.gradientAngle, in: 0...360, step: 15)
                     }
                 }
             }

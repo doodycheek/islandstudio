@@ -287,6 +287,16 @@ struct HealthView: View {
                     row("Keep running in background", manager.keepAlive ? "On" : "Off", ok: manager.keepAlive)
                 }
 
+                Card(title: "Live data", icon: "waveform.path.ecg", tint: .teal,
+                     footer: "See the current value of every live source, and what's missing when one shows a dash.") {
+                    NavigationLink {
+                        LiveDataView()
+                    } label: {
+                        NavRowLabel(title: "Open live data", icon: "chart.bar.doc.horizontal.fill", color: .teal)
+                    }
+                    .buttonStyle(.plain)
+                }
+
                 Card(title: "Setup saving", icon: "checkmark.shield.fill", tint: .indigo,
                      footer: "If Secure copy says Not available, this signing doesn't allow the Keychain. Use Save to Files in Settings instead.") {
                     row("Auto-save", manager.settings.autoSave ? "On" : "Off", ok: manager.settings.autoSave)
@@ -349,5 +359,86 @@ struct ReactionEditor: View {
                     .cardField()
             }
         }
+    }
+}
+
+// MARK: - Live data
+
+/// The current value of every live source, so you can see exactly what's loading and what isn't.
+struct LiveDataView: View {
+    @EnvironmentObject var manager: IslandManager
+
+    private func row(_ title: String, _ value: String?, hint: String? = nil) -> some View {
+        HStack(alignment: .top, spacing: 10) {
+            Image(systemName: value == nil ? "exclamationmark.triangle.fill" : "checkmark.circle.fill")
+                .foregroundStyle(value == nil ? Color.orange : Color.green)
+            VStack(alignment: .leading, spacing: 2) {
+                Text(title)
+                if value == nil, let hint {
+                    Text(hint).font(.caption).foregroundStyle(.secondary)
+                }
+            }
+            Spacer()
+            Text(value ?? "--").foregroundStyle(.secondary)
+        }
+        .font(.subheadline)
+    }
+
+    var body: some View {
+        let info = manager.info
+        let location = manager.settings.latitude == nil
+            ? "Set your location in Settings → Live info."
+            : "Waiting for the first refresh. It loads once a slot or chip uses it."
+        ScrollView {
+            VStack(spacing: 16) {
+                Card(title: "Weather & air", icon: "cloud.sun.fill", tint: .blue,
+                     footer: "These come from Open-Meteo and refresh every 15 minutes. They only load while a slot or chip is showing them.") {
+                    row("Temperature", info.weatherTemp.map { "\($0)°" }, hint: location)
+                    RowDivider()
+                    row("UV index", info.uv.map { String(format: "%.0f", $0) }, hint: location)
+                    RowDivider()
+                    row("Chance of rain", info.rainChance.map { "\($0)%" }, hint: location)
+                    RowDivider()
+                    row("Wind", info.wind.map { "\($0)" }, hint: location)
+                    RowDivider()
+                    row("Air quality", info.aqi.map { "\($0)" }, hint: location)
+                }
+
+                Card(title: "Your iPhone", icon: "iphone", tint: .purple) {
+                    row("Battery", manager.batteryLevelNow >= 0 ? "\(manager.batteryLevelNow)%" : nil)
+                    RowDivider()
+                    row("Free storage", info.storageGB >= 0 ? "\(info.storageGB) GB" : nil,
+                        hint: "Loads once a storage slot or chip is showing.")
+                    RowDivider()
+                    row("Volume", "\(SystemReader.volumePercent)%")
+                    RowDivider()
+                    row("Brightness", "\(SystemReader.brightnessPercent)%")
+                    RowDivider()
+                    row("Low Power Mode", SystemReader.lowPower ? "On" : "Off")
+                    RowDivider()
+                    row("Network", manager.networkTypeNow == "wifi" ? "Wi-Fi" : (manager.networkTypeNow == "cell" ? "Cellular" : "Offline"))
+                }
+
+                Card(title: "Goals & calendar", icon: "target", tint: .orange) {
+                    row("Steps today", info.steps >= 0 ? info.steps.formatted() : nil,
+                        hint: "Needs Motion & Fitness access. Check the Health check screen.")
+                    RowDivider()
+                    row("Counter", "\(manager.settings.counter) of \(manager.settings.counterGoal)")
+                    RowDivider()
+                    row("Goal streak", "\(manager.settings.streak) days")
+                    RowDivider()
+                    row("Next event", info.nextEventTitle.isEmpty ? nil : info.nextEventTitle,
+                        hint: "Needs calendar access and an upcoming event.")
+                }
+
+                WideButton(title: "Refresh everything now", icon: "arrow.clockwise") {
+                    manager.refreshAllNow()
+                }
+            }
+            .padding(16)
+        }
+        .background(ThemeBackground())
+        .navigationTitle("Live data")
+        .navigationBarTitleDisplayMode(.inline)
     }
 }

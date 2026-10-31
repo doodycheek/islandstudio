@@ -11,6 +11,9 @@ struct BackupData: Codable {
     var config: IslandState
     var settings: AppSettings
     var presets: [SavedPreset]
+    var speed: Double? = nil
+    var loop: Double? = nil
+    var keepAlive: Bool? = nil
 }
 
 @MainActor
@@ -158,6 +161,8 @@ final class IslandManager: ObservableObject {
     @Published private(set) var canRedo = false
     /// While true, the preview shows how your style looked before you started editing.
     @Published var comparing = false
+    /// True while the island is being started, so the app can show a loading state.
+    @Published private(set) var isStarting = false
     /// When your setup was last copied to the Keychain, and whether that worked.
     @Published private(set) var lastAutoSave: Date?
     @Published private(set) var autoSaveOK: Bool?
@@ -214,6 +219,9 @@ final class IslandManager: ObservableObject {
             saveConfig()
             saveSettings()
             PresetStore.saveCustom(savedPresets)
+            if let value = restored?.speed { frameInterval = value; d.set(value, forKey: Keys.frameInterval) }
+            if let value = restored?.loop { cycleLength = value; d.set(value, forKey: Keys.cycleLength) }
+            if let value = restored?.keepAlive { keepAlive = value; d.set(value, forKey: Keys.keepAlive) }
             restoredFromKeychain = true
         }
         UIDevice.current.isBatteryMonitoringEnabled = true
@@ -241,6 +249,8 @@ final class IslandManager: ObservableObject {
             status = "Live Activities are off: Settings → Island Studio → Live Activities"
             return
         }
+        isStarting = true
+        defer { isStarting = false }
         _ = try? await UNUserNotificationCenter.current().requestAuthorization(options: [.alert, .sound])
         await endAllActivities()
         isHiddenForMusic = false
@@ -469,7 +479,8 @@ final class IslandManager: ObservableObject {
         var exported = settings
         exported.latitude = nil
         exported.longitude = nil
-        let backup = BackupData(config: config.styleOnly(), settings: exported, presets: savedPresets)
+        let backup = BackupData(config: config.styleOnly(), settings: exported, presets: savedPresets,
+                                  speed: frameInterval, loop: cycleLength, keepAlive: keepAlive)
         guard let json = try? JSONEncoder().encode(backup) else {
             status = "Couldn't create a backup"
             return
@@ -492,6 +503,9 @@ final class IslandManager: ObservableObject {
         config = backup.config
         settings = restored
         savedPresets = backup.presets
+        if let value = backup.speed { frameInterval = value }
+        if let value = backup.loop { cycleLength = value }
+        if let value = backup.keepAlive { keepAlive = value }
         status = "Backup restored"
     }
 
@@ -726,6 +740,26 @@ final class IslandManager: ObservableObject {
             s[keyPath: path].colorHex = s.keylineHex
         }
 
+        // Per-slot rotation and "show only when" rules
+        func resolved(_ slot: SlotConfig) -> SlotConfig {
+            var out = slot
+            if !out.rotate.isEmpty {
+                var cycle: [SlotContent] = [out.content]
+                for raw in out.rotate {
+                    if let extra = SlotContent(rawValue: raw) { cycle.append(extra) }
+                }
+                let step = max(2.0, out.rotateSeconds)
+                out.content = cycle[Int(now.timeIntervalSince1970 / step) % cycle.count]
+            }
+            if live && !out.showWhen.isEmpty && !slotCondition(out.showWhen, battery: battery, now: now) {
+                out.content = .empty
+            }
+            return out
+        }
+        s.left = resolved(s.left)
+        s.right = resolved(s.right)
+        s.minimal = resolved(s.minimal)
+
         // Extra live values, only shipped when a slot or chip shows them (keeps the island's data small)
         let chipSet: Set<String> = (s.lockChips || s.expandedChips) ? Set(s.chipKinds) : Set<String>()
         func chipOn(_ kind: ChipKind) -> Bool { chipSet.contains(kind.rawValue) }
@@ -784,6 +818,17 @@ final class IslandManager: ObservableObject {
                 s.rotatingText = String(lines[index].prefix(40))
             }
         }
+
+        // Accessibility, bedtime and quick launch
+        if settings.reduceMotion { s.frame = 0 }
+        if settings.highContrast {
+            s.lockStyle = .black
+            s.islandBg = .off
+            s.glow = false
+        }
+        s.textScale = settings.textScale
+        s.bedtimeMinute = settings.bedtimeMinute
+        s.links = settings.quickLinks.filter { !$0.url.isEmpty }.prefix(4).map { $0.emoji + "|" + $0.url }
 
         // Only ship heavy data that a slot actually shows
         s.musicArt = s.uses(.musicArt) ? info.musicArt : nil
@@ -1290,7 +1335,14 @@ final class IslandManager: ObservableObject {
     }
 
     private func makeAlert(_ title: String) -> AlertConfiguration {
-        let sound: AlertConfiguration.AlertSound = settings.chimeSound ? .default : .named("silence.wav")
+        let sound: AlertConfiguration.AlertSound
+        if !settings.chimeSound {
+            sound = .named("silence.wav")
+        } else if settings.chimeName == "default" {
+            sound = .default
+        } else {
+            sound = .named("chime-" + settings.chimeName + ".wav")
+        }
         return AlertConfiguration(title: LocalizedStringResource(stringLiteral: title),
                                   body: LocalizedStringResource(stringLiteral: ""),
                                   sound: sound)
@@ -1639,7 +1691,8 @@ extension IslandManager {
             exported.latitude = nil
             exported.longitude = nil
         }
-        let backup = BackupData(config: config.styleOnly(), settings: exported, presets: savedPresets)
+        let backup = BackupData(config: config.styleOnly(), settings: exported, presets: savedPresets,
+                                  speed: frameInterval, loop: cycleLength, keepAlive: keepAlive)
         return try? JSONEncoder().encode(backup)
     }
 
@@ -1687,6 +1740,9 @@ extension IslandManager {
         config = backup.config
         settings = restored
         savedPresets = backup.presets
+        if let value = backup.speed { frameInterval = value }
+        if let value = backup.loop { cycleLength = value }
+        if let value = backup.keepAlive { keepAlive = value }
         status = "Backup restored"
         Haptics.success()
         return true
@@ -1715,4 +1771,40 @@ extension IslandManager {
     func checkBubbleExpiry(now: Date) {
         if let end = settings.bubbleUntil, now >= end { setBubbleMode(false) }
     }
+}
+
+// MARK: - Slot conditions, live data refresh
+
+extension IslandManager {
+    /// Whether a "show only when" condition is true right now.
+    func slotCondition(_ key: String, battery: (level: Int, charging: Bool), now: Date) -> Bool {
+        let hour = Calendar.current.component(.hour, from: now)
+        switch key {
+        case "charging": return battery.charging
+        case "notCharging": return !battery.charging
+        case "lowBattery": return battery.level >= 0 && battery.level <= 20
+        case "night": return hour >= 21 || hour < 6
+        case "day": return hour >= 6 && hour < 21
+        case "music": return musicActive || info.musicPlaying
+        case "weekend": return Calendar.current.isDateInWeekend(now)
+        case "wifi": return networkWatcher.type == "wifi"
+        case "cellular": return networkWatcher.type == "cell"
+        case "focus": return !settings.pomoPhase.isEmpty
+        default: return true
+        }
+    }
+
+    /// Forgets when each live source last refreshed, so the next tick fetches everything again.
+    func refreshAllNow() {
+        lastWeatherFetch = nil
+        lastExtrasFetch = nil
+        lastAQIFetch = nil
+        lastStorageFetch = nil
+        lastCalendarFetch = nil
+        lastCryptoFetch = nil
+        lastStepsFetch = nil
+        status = "Refreshing live data…"
+    }
+
+    var networkTypeNow: String { networkWatcher.type }
 }

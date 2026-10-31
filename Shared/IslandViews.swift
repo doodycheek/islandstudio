@@ -130,22 +130,68 @@ struct LockScreenView: View {
     }
 
     /// Always-On Display: big, bright and simple, with plain digits instead of timers.
-    private var aod: some View {
-        HStack(spacing: 12) {
-            SlotView(slot: state.left, state: state, size: 30, decorated: false)
-            VStack(alignment: .leading, spacing: 2) {
-                Text(state.lockTitleText)
-                    .font(.system(size: 18, weight: .bold))
-                Text(ClockFormat.string(state.now, seconds: false, hour12: state.hour12))
-                    .font(.system(size: 14, weight: .medium))
+    private var aodColor: Color { state.aodTint ? state.accentColor : Color.white }
+
+    private var aodTime: String {
+        ClockFormat.string(state.now, seconds: state.aodSeconds, hour12: state.hour12)
+    }
+
+    /// Always-On Display: bright and simple, with plain digits instead of timers.
+    @ViewBuilder private var aod: some View {
+        switch state.aodLayout {
+        case "clock":
+            VStack(spacing: 6) {
+                Text(aodTime)
+                    .font(.system(size: 50, weight: .bold))
+                    .fontDesign(state.design)
                     .monospacedDigit()
+                    .minimumScaleFactor(0.5)
+                    .lineLimit(1)
+                    .foregroundStyle(aodColor)
+                Text(state.lockTitleText)
+                    .font(.system(size: 17, weight: .semibold))
+                    .lineLimit(1)
+                if state.aodChips { InfoChipRow(state: state) }
             }
-            .lineLimit(1)
-            Spacer(minLength: 4)
-            SlotView(slot: state.right, state: state, size: 30, decorated: false)
+            .padding(16)
+            .frame(maxWidth: .infinity)
+            .foregroundStyle(Color.white)
+        case "minimal":
+            HStack(spacing: 10) {
+                SlotView(slot: state.left, state: state, size: 26, decorated: false)
+                Text(aodTime)
+                    .font(.system(size: 26, weight: .bold))
+                    .fontDesign(state.design)
+                    .monospacedDigit()
+                    .minimumScaleFactor(0.6)
+                    .lineLimit(1)
+                    .foregroundStyle(aodColor)
+                Spacer(minLength: 4)
+                SlotView(slot: state.right, state: state, size: 26, decorated: false)
+            }
+            .padding(14)
+            .foregroundStyle(Color.white)
+        default:
+            VStack(alignment: .leading, spacing: 8) {
+                HStack(spacing: 12) {
+                    SlotView(slot: state.left, state: state, size: 30, decorated: false)
+                    VStack(alignment: .leading, spacing: 2) {
+                        Text(state.lockTitleText)
+                            .font(.system(size: 18, weight: .bold))
+                        Text(aodTime)
+                            .font(.system(size: 14, weight: .medium))
+                            .monospacedDigit()
+                            .foregroundStyle(aodColor)
+                    }
+                    .lineLimit(1)
+                    Spacer(minLength: 4)
+                    SlotView(slot: state.right, state: state, size: 30, decorated: false)
+                }
+                if state.aodChips { InfoChipRow(state: state) }
+            }
+            .padding(16)
+            .foregroundStyle(Color.white)
         }
-        .padding(16)
-        .foregroundStyle(Color.white)
     }
 
     private var bigClock: some View {
@@ -163,7 +209,7 @@ struct LockScreenView: View {
                 .lineLimit(1)
             if !state.lockTitleText.isEmpty {
                 Text(state.lockTitleText)
-                    .font(.system(size: 15, weight: .semibold))
+                    .font(.system(size: 15 * state.textScale, weight: .semibold))
                     .foregroundStyle(titleColor)
                     .lineLimit(1)
             }
@@ -196,12 +242,12 @@ struct LockScreenView: View {
             SlotBadge(slot: state.left, state: state, accent: accent, diameter: 36)
             HStack(spacing: 6) {
                 if !state.lockIcon.isEmpty {
-                    Image(systemName: state.lockIcon).foregroundStyle(accent)
+                    Image(systemName: state.lockIcon).foregroundStyle(state.lockIconColor)
                 }
                 Text(state.lockTitleText)
                     .foregroundStyle(titleColor)
             }
-            .font(.system(size: 15, weight: .semibold))
+            .font(.system(size: 15 * state.textScale, weight: .semibold))
             .fontDesign(state.design)
             .lineLimit(1)
             .minimumScaleFactor(0.8)
@@ -234,15 +280,15 @@ struct LockScreenView: View {
             HStack(spacing: 6) {
                 if !state.lockIcon.isEmpty {
                     Image(systemName: state.lockIcon)
-                        .foregroundStyle(accent)
+                        .foregroundStyle(state.lockIconColor)
                 }
                 Text(state.lockTitleText)
                     .foregroundStyle(titleColor)
             }
-            .font(.system(size: titleSize, weight: .bold))
+            .font(.system(size: titleSize * state.textScale, weight: .bold))
             if !state.lockSubtitleText.isEmpty {
                 Text(state.lockSubtitleText)
-                    .font(.system(size: subtitleSize))
+                    .font(.system(size: subtitleSize * state.textScale))
                     .foregroundStyle(Color.white.opacity(0.6))
             }
         }
@@ -370,71 +416,68 @@ struct InfoChipRow: View {
         }
     }
 
+    private var cryptoText: String {
+        let coin = state.cryptoSymbol.isEmpty ? "BTC" : state.cryptoSymbol
+        return state.cryptoPrice == nil ? coin + " --" : coin + " " + CryptoFormat.price(state.cryptoPrice)
+    }
+
+    private var networkIcon: String {
+        state.netType == "wifi" ? "wifi" : (state.netType == "cell" ? "antenna.radiowaves.left.and.right" : "wifi.slash")
+    }
+
+    private var networkText: String {
+        state.netType == "wifi" ? "Wi-Fi" : (state.netType == "cell" ? "Cellular" : "Offline")
+    }
+
+    /// Every chip always shows something. A dash means the data isn't loaded yet.
     @ViewBuilder private func chip(_ kind: ChipKind) -> some View {
+        let tint = state.chipIconColor
         switch kind {
         case .battery:
             if state.battery >= 0 {
                 BatteryChip(level: state.battery, charging: state.charging)
+            } else {
+                InfoChip(icon: "battery.50", text: "--%", iconColor: tint)
             }
         case .weather:
-            if let temp = state.weatherTemp {
-                InfoChip(icon: state.weatherSymbol.isEmpty ? "cloud.sun.fill" : state.weatherSymbol,
-                         text: "\(temp)°", multicolor: true)
-            }
+            InfoChip(icon: state.weatherSymbol.isEmpty ? "cloud.sun.fill" : state.weatherSymbol,
+                     text: state.weatherTemp.map { "\($0)°" } ?? "--°", multicolor: true, iconColor: tint)
         case .steps:
-            if state.steps >= 0 {
-                InfoChip(icon: "figure.walk", text: state.steps.formatted())
-            }
+            InfoChip(icon: "figure.walk", text: state.steps >= 0 ? state.steps.formatted() : "--", iconColor: tint)
         case .date:
-            InfoChip(icon: "calendar", text: state.now.formatted(.dateTime.weekday(.abbreviated).day()))
+            InfoChip(icon: "calendar", text: state.now.formatted(.dateTime.weekday(.abbreviated).day()), iconColor: tint)
         case .moon:
             let phase = MoonPhase.info(for: state.now)
-            InfoChip(icon: phase.symbol, text: "\(phase.percent)%")
+            InfoChip(icon: phase.symbol, text: "\(phase.percent)%", iconColor: tint)
         case .counter:
             InfoChip(icon: "plus.circle.fill",
-                     text: state.counterGoal > 0 ? "\(state.counter)/\(state.counterGoal)" : "\(state.counter)")
+                     text: state.counterGoal > 0 ? "\(state.counter)/\(state.counterGoal)" : "\(state.counter)",
+                     iconColor: tint)
         case .crypto:
-            if state.cryptoPrice != nil {
-                InfoChip(icon: "bitcoinsign.circle.fill",
-                         text: "\(state.cryptoSymbol) \(CryptoFormat.price(state.cryptoPrice))")
-            }
+            InfoChip(icon: "bitcoinsign.circle.fill", text: cryptoText, iconColor: tint)
         case .countdown:
-            InfoChip(icon: "hourglass", text: countdownText)
+            InfoChip(icon: "hourglass", text: countdownText, iconColor: tint)
         case .focus:
-            if !state.pomoPhase.isEmpty {
-                InfoChip(icon: "timer", text: focusText)
-            }
+            InfoChip(icon: "timer", text: state.pomoPhase.isEmpty ? "Focus off" : focusText, iconColor: tint)
         case .nextEvent:
-            if !state.nextEventTitle.isEmpty {
-                InfoChip(icon: "calendar", text: state.nextEventLine)
-            }
+            InfoChip(icon: "calendar", text: state.nextEventTitle.isEmpty ? "No events" : state.nextEventLine,
+                     iconColor: tint)
         case .uv:
-            if let uv = state.uv {
-                InfoChip(icon: "sun.max.fill", text: "UV \(Int(uv.rounded()))", multicolor: true)
-            }
+            InfoChip(icon: "sun.max.fill", text: state.uv.map { "UV \(Int($0.rounded()))" } ?? "UV --",
+                     multicolor: true, iconColor: tint)
         case .rain:
-            if let chance = state.rainChance {
-                InfoChip(icon: "drop.fill", text: "\(chance)%")
-            }
+            InfoChip(icon: "drop.fill", text: state.rainChance.map { "\($0)%" } ?? "--%", iconColor: tint)
         case .wind:
-            if let speed = state.wind {
-                InfoChip(icon: "wind", text: "\(speed)")
-            }
+            InfoChip(icon: "wind", text: state.wind.map { "\($0)" } ?? "--", iconColor: tint)
         case .aqi:
-            if let value = state.aqi {
-                InfoChip(icon: "leaf.fill", text: "AQI \(value)")
-            }
+            InfoChip(icon: "leaf.fill", text: state.aqi.map { "AQI \($0)" } ?? "AQI --", iconColor: tint)
         case .network:
-            InfoChip(icon: state.netType == "wifi" ? "wifi" : (state.netType == "cell" ? "antenna.radiowaves.left.and.right" : "wifi.slash"),
-                     text: state.netType == "wifi" ? "Wi-Fi" : (state.netType == "cell" ? "Cellular" : "Offline"))
+            InfoChip(icon: networkIcon, text: networkText, iconColor: tint)
         case .storage:
-            if state.storageGB >= 0 {
-                InfoChip(icon: "internaldrive.fill", text: "\(state.storageGB) GB")
-            }
+            InfoChip(icon: "internaldrive.fill", text: state.storageGB >= 0 ? "\(state.storageGB) GB" : "-- GB",
+                     iconColor: tint)
         case .streak:
-            if state.streak > 0 {
-                InfoChip(icon: "flame.fill", text: "\(state.streak)")
-            }
+            InfoChip(icon: "flame.fill", text: "\(state.streak)", iconColor: tint)
         }
     }
 }
@@ -443,11 +486,14 @@ struct InfoChip: View {
     let icon: String
     let text: String
     var multicolor = false
+    var iconColor: Color? = nil
 
     var body: some View {
         HStack(spacing: 4) {
             Image(systemName: icon)
-                .symbolRenderingMode(multicolor ? SymbolRenderingMode.multicolor : SymbolRenderingMode.monochrome)
+                .symbolRenderingMode(multicolor && iconColor == nil ? SymbolRenderingMode.multicolor
+                                                                    : SymbolRenderingMode.monochrome)
+                .foregroundStyle(iconColor ?? Color.white)
             Text(text)
         }
         .font(.system(size: 12, weight: .semibold))
@@ -501,7 +547,7 @@ struct ExpandedTitle: View {
         HStack(spacing: 6) {
             if !state.expandedIcon.isEmpty && state.bannerText.isEmpty {
                 Image(systemName: state.expandedIcon)
-                    .foregroundStyle(state.accentColor)
+                    .foregroundStyle(state.expandedIconColor)
             }
             Text(state.bannerText.isEmpty ? state.expandedTitleText : state.bannerText)
                 .foregroundStyle(titleColor)
@@ -553,11 +599,44 @@ struct IslandButton: View {
     }
 }
 
+/// A slot in the long-press view, kept narrow so it never slides under the camera.
+struct ExpandedSlot: View {
+    let slot: SlotConfig
+    let state: IslandState
+    var alignment: Alignment = .leading
+    var scale: CGFloat = 1
+
+    var body: some View {
+        SlotView(slot: slot, state: state, size: state.expandedSlotSize * scale)
+            .lineLimit(1)
+            .minimumScaleFactor(0.5)
+            .frame(maxWidth: 92, alignment: alignment)
+    }
+}
+
 struct ExpandedBottom: View {
     let state: IslandState
 
+    static let defaultOrder = ["subtitle", "chips", "bar", "graph", "reactions", "counter", "timer", "buttons", "links"]
+
+    private var order: [String] {
+        var list = state.expandedOrder.filter { ExpandedBottom.defaultOrder.contains($0) }
+        for key in ExpandedBottom.defaultOrder where !list.contains(key) { list.append(key) }
+        return list
+    }
+
     var body: some View {
         VStack(spacing: 8) {
+            ForEach(order, id: \.self) { key in
+                section(key)
+            }
+        }
+        .islandPanel(state)
+    }
+
+    @ViewBuilder private func section(_ key: String) -> some View {
+        switch key {
+        case "subtitle":
             if !state.expandedSubtitleText.isEmpty {
                 Text(state.expandedSubtitleText)
                     .font(.subheadline)
@@ -565,19 +644,23 @@ struct ExpandedBottom: View {
                     .foregroundStyle(.secondary)
                     .lineLimit(1)
             }
+        case "chips":
             if state.expandedChips {
                 InfoChipRow(state: state)
                     .foregroundStyle(.white)
             }
+        case "bar":
             if state.expandedBar {
                 AccentBar(state: state)
                     .padding(.horizontal, 8)
             }
+        case "graph":
             if !state.graphKind.isEmpty && state.spark.count > 1 {
                 SparklineView(values: state.spark, color: state.accentColor)
                     .frame(height: 26)
                     .padding(.horizontal, 8)
             }
+        case "reactions":
             if !state.reactions.isEmpty {
                 HStack(spacing: 14) {
                     ForEach(state.reactions, id: \.self) { emoji in
@@ -588,6 +671,7 @@ struct ExpandedBottom: View {
                 }
                 .buttonStyle(.plain)
             }
+        case "counter":
             if state.showCounterButtons {
                 HStack(spacing: 18) {
                     Button(intent: CounterMinusIntent()) {
@@ -603,8 +687,9 @@ struct ExpandedBottom: View {
                 }
                 .font(.title2)
                 .buttonStyle(.plain)
-                .foregroundStyle(state.accentColor)
+                .foregroundStyle(state.buttonColor)
             }
+        case "timer":
             if state.showTimerButton && !state.buttonKinds.contains(ButtonKind.focus.rawValue) {
                 Button(intent: PomodoroToggleIntent()) {
                     Label(state.pomoPhase.isEmpty ? "Start focus" : "Stop timer",
@@ -612,11 +697,12 @@ struct ExpandedBottom: View {
                         .font(.subheadline.weight(.semibold))
                         .padding(.horizontal, 14)
                         .padding(.vertical, 6)
-                        .background(Capsule().fill(state.accentColor.opacity(0.3)))
+                        .background(Capsule().fill(state.buttonColor.opacity(0.3)))
                 }
                 .buttonStyle(.plain)
                 .foregroundStyle(.white)
             }
+        case "buttons":
             if state.showButtons && state.buttonKinds.contains(where: { ButtonKind(rawValue: $0) != nil }) {
                 HStack(spacing: 26) {
                     ForEach(state.buttonKinds, id: \.self) { raw in
@@ -627,10 +713,26 @@ struct ExpandedBottom: View {
                 }
                 .font(.title2)
                 .buttonStyle(.plain)
-                .foregroundStyle(state.accentColor)
+                .foregroundStyle(state.buttonColor)
             }
+        case "links":
+            if !state.links.isEmpty {
+                HStack(spacing: 10) {
+                    ForEach(state.links, id: \.self) { entry in
+                        if let link = QuickLink(entry: entry), let url = URL(string: link.url) {
+                            Link(destination: url) {
+                                Text(link.emoji)
+                                    .font(.title3)
+                                    .frame(width: 46, height: 34)
+                                    .background(Capsule().fill(state.buttonColor.opacity(0.28)))
+                            }
+                        }
+                    }
+                }
+            }
+        default:
+            EmptyView()
         }
-        .islandPanel(state)
     }
 }
 

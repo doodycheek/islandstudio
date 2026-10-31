@@ -180,7 +180,7 @@ struct ToolsView: View {
                     Spacer()
                     Text("\(manager.settings.slideSeconds, specifier: "%.0f")s").foregroundStyle(.secondary)
                 }
-                Slider(value: $manager.settings.slideSeconds, in: 1...10, step: 1)
+                GlowSlider(value: $manager.settings.slideSeconds, in: 1...10, step: 1)
             }
         }
         .onChange(of: slideItems) { _, items in
@@ -215,7 +215,7 @@ struct ToolsView: View {
                     Spacer()
                     Text("\(manager.settings.messageSeconds, specifier: "%.0f")s").foregroundStyle(.secondary)
                 }
-                Slider(value: $manager.settings.messageSeconds, in: 2...12, step: 1)
+                GlowSlider(value: $manager.settings.messageSeconds, in: 2...12, step: 1)
             }
         }
     }

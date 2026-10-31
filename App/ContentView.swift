@@ -1,33 +1,67 @@
 import PhotosUI
+import UIKit
 import SwiftUI
 
-/// Root: three tabs, with the chosen theme and accent applied everywhere.
+/// Root: three pages, a floating tab bar, and the chosen theme, accent and look everywhere.
 struct ContentView: View {
     @EnvironmentObject var manager: IslandManager
     @AppStorage("themeMode") private var themeMode = ThemeMode.system.rawValue
+    @AppStorage("appTheme") private var appThemeName = AppTheme.midnight.rawValue
     @AppStorage("accentChoice") private var accentChoice = AccentChoice.purple.rawValue
     @AppStorage("selectedTab") private var selectedTab = AppTab.studio.rawValue
+    @State private var showSplash = true
+
+    private var theme: AppTheme { AppTheme(rawValue: appThemeName) ?? .midnight }
 
     private var accent: Color {
         let choice = AccentChoice(rawValue: accentChoice) ?? .purple
         return choice == .island ? manager.config.accentColor : choice.color
     }
 
+    private func applyAppearance() {
+        let proxy = UISegmentedControl.appearance()
+        proxy.selectedSegmentTintColor = UIColor(accent)
+        proxy.backgroundColor = UIColor.label.withAlphaComponent(0.08)
+        proxy.setTitleTextAttributes([.foregroundColor: UIColor.white,
+                                      .font: UIFont.systemFont(ofSize: 13, weight: .semibold)], for: .selected)
+        proxy.setTitleTextAttributes([.foregroundColor: UIColor.label.withAlphaComponent(0.75),
+                                      .font: UIFont.systemFont(ofSize: 13, weight: .medium)], for: .normal)
+    }
+
     var body: some View {
         TabView(selection: $selectedTab) {
             StudioView()
-                .tabItem { Label("Studio", systemImage: "wand.and.stars") }
                 .tag(AppTab.studio.rawValue)
+                .toolbar(.hidden, for: .tabBar)
             PresetsView()
-                .tabItem { Label("Presets", systemImage: "square.grid.2x2.fill") }
                 .tag(AppTab.presets.rawValue)
+                .toolbar(.hidden, for: .tabBar)
             SettingsView()
-                .tabItem { Label("Settings", systemImage: "gearshape.fill") }
                 .tag(AppTab.settings.rawValue)
+                .toolbar(.hidden, for: .tabBar)
+        }
+        .safeAreaInset(edge: .bottom, spacing: 0) {
+            FloatingTabBar(selection: $selectedTab)
+        }
+        .overlay {
+            if showSplash {
+                SplashView()
+                    .transition(.opacity)
+                    .zIndex(10)
+            }
         }
         .tint(accent)
         .environment(\.themeAccent, accent)
-        .preferredColorScheme((ThemeMode(rawValue: themeMode) ?? .system).colorScheme)
+        .environment(\.appTheme, theme)
+        .fontDesign(theme.design)
+        .toggleStyle(GlowToggleStyle())
+        .preferredColorScheme(theme.scheme)
+        .onAppear { applyAppearance() }
+        .onChange(of: accent) { _, _ in applyAppearance() }
+        .task {
+            try? await Task.sleep(nanoseconds: 2_000_000_000)
+            withAnimation(.easeOut(duration: 0.5)) { showSplash = false }
+        }
         .sensoryFeedback(.selection, trigger: manager.settings.currentPresetID)
     }
 }
@@ -79,7 +113,8 @@ struct StudioView: View {
                     switch mode {
                     case .island: IslandSettings()
                     case .expanded: ExpandedSettings()
-                    case .lock, .aod: LockSettings()
+                    case .lock: LockSettings()
+                    case .aod: AODSettings()
                     }
                 }
                 .padding(16)
@@ -380,7 +415,7 @@ struct IslandSettings: View {
                     Spacer()
                     Text(String(format: "%.1f", manager.config.tracking)).foregroundStyle(.secondary)
                 }
-                Slider(value: $manager.config.tracking, in: -1...4, step: 0.5)
+                GlowSlider(value: $manager.config.tracking, in: -1...4, step: 0.5)
             }
             RowDivider()
             ToggleRow(title: "Outline ring on minimal bubble", icon: "circle.dashed", color: .cyan,
@@ -394,7 +429,7 @@ struct IslandSettings: View {
                         Spacer()
                         Text("\(Int((manager.config.glowStrength * 100).rounded()))%").foregroundStyle(.secondary)
                     }
-                    Slider(value: $manager.config.glowStrength, in: 0.3...2, step: 0.1)
+                    GlowSlider(value: $manager.config.glowStrength, in: 0.3...2, step: 0.1)
                 }
             }
         }
@@ -421,7 +456,7 @@ struct IslandSettings: View {
                     Spacer()
                     Text("\(manager.frameInterval, specifier: "%.1f")s").foregroundStyle(.secondary)
                 }
-                Slider(value: $manager.frameInterval, in: 0.5...5, step: 0.5)
+                GlowSlider(value: $manager.frameInterval, in: 0.5...5, step: 0.5)
             }
             VStack(alignment: .leading, spacing: 4) {
                 HStack {
@@ -429,7 +464,7 @@ struct IslandSettings: View {
                     Spacer()
                     Text("\(manager.cycleLength, specifier: "%.0f")s").foregroundStyle(.secondary)
                 }
-                Slider(value: $manager.cycleLength, in: 1...10, step: 1)
+                GlowSlider(value: $manager.cycleLength, in: 1...10, step: 1)
             }
             if manager.isRunning {
                 RowDivider()
@@ -554,6 +589,25 @@ struct ExpandedSettings: View {
                         }
                     }
                 }
+            }
+
+            Card(title: "Section order", icon: "arrow.up.arrow.down", tint: .indigo,
+                 footer: "Drag the rows of the long-press view into any order.") {
+                NavigationLink {
+                    ExpandedOrderView()
+                } label: {
+                    NavRowLabel(title: "Reorder sections", icon: "list.number", color: .indigo)
+                }
+                .buttonStyle(.plain)
+            }
+
+            Card(title: "Icon colors", icon: "paintpalette.fill", tint: .orange,
+                 footer: "Tap a row to give it its own color. Leave it alone and it follows your accent.") {
+                OptionalColorField(title: "Buttons", icon: "hand.tap.fill", hex: $manager.config.buttonHex)
+                RowDivider()
+                OptionalColorField(title: "Title icon", icon: "star.fill", hex: $manager.config.expandedIconHex)
+                RowDivider()
+                OptionalColorField(title: "Chip icons", icon: "square.grid.2x2.fill", hex: $manager.config.chipIconHex)
             }
 
             Card(title: "Reactions", icon: "face.smiling", tint: .pink,
@@ -690,6 +744,13 @@ struct LockSettings: View {
                 }
                 Text("Title icon").font(.subheadline.weight(.medium))
                 IconStrip(symbol: $manager.config.lockIcon)
+            }
+
+            Card(title: "Icon colors", icon: "paintpalette.fill", tint: .orange,
+                 footer: "Tap a row to give it its own color. Leave it alone and it follows your accent.") {
+                OptionalColorField(title: "Title icon", icon: "star.fill", hex: $manager.config.lockIconHex)
+                RowDivider()
+                OptionalColorField(title: "Chip icons", icon: "square.grid.2x2.fill", hex: $manager.config.chipIconHex)
             }
 
             Card(title: "Mini graph", icon: "chart.xyaxis.line", tint: .green,
