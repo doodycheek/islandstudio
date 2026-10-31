@@ -823,7 +823,7 @@ final class IslandManager: ObservableObject {
         if settings.reduceMotion { s.frame = 0 }
         if settings.highContrast {
             s.lockStyle = .black
-            s.islandBg = .off
+            s.islandBg = .none
             s.glow = false
         }
         s.textScale = settings.textScale

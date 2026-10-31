@@ -2,6 +2,9 @@
 
 Customizes the Dynamic Island with a Live Activity, plus a background keep-alive so animations keep running.
 
+## v1.7.1
+- Fixed a build error in the new high-contrast option
+
 ## v1.7.0
 - Redesign: glass cards, glowing toggles and sliders, floating tab bar, five app themes, animated loading screen
 - Slot chooser gallery with live previews; slots can rotate through several things and show only when a condition is true
