@@ -6,8 +6,8 @@ options:
 settings:
   base:
     SWIFT_VERSION: "5.0"
-    MARKETING_VERSION: "1.5"
-    CURRENT_PROJECT_VERSION: "6"
+    MARKETING_VERSION: "1.6.4"
+    CURRENT_PROJECT_VERSION: "11"
     CODE_SIGNING_ALLOWED: "NO"
     CODE_SIGNING_REQUIRED: "NO"
     CODE_SIGN_IDENTITY: ""
@@ -38,6 +38,8 @@ targets:
         UISupportedInterfaceOrientations: [UIInterfaceOrientationPortrait]
         NSAppleMusicUsageDescription: "Island Studio shows the song playing in the Music app on your Dynamic Island."
         NSMotionUsageDescription: "Island Studio shows your step count on your Dynamic Island."
+        NSCalendarsFullAccessUsageDescription: "Island Studio shows your next calendar event on your Dynamic Island."
+        NSCalendarsUsageDescription: "Island Studio shows your next calendar event on your Dynamic Island."
         NSLocationWhenInUseUsageDescription: "Island Studio uses your location to show local weather on your Dynamic Island."
   IslandWidget:
     type: app-extension

@@ -265,12 +265,30 @@ struct WideButton: View {
 struct IconStrip: View {
     @Binding var symbol: String
     @Environment(\.themeAccent) private var accent
+    @State private var showAll = false
 
     static let symbols = ["", "sparkles", "heart.fill", "star.fill", "bolt.fill", "flame.fill", "moon.stars.fill",
                           "music.note", "crown.fill", "leaf.fill", "sun.max.fill", "cloud.fill", "gamecontroller.fill",
                           "car.fill", "pawprint.fill", "headphones", "lock.fill", "bell.fill", "camera.fill", "gift.fill"]
 
     var body: some View {
+        VStack(alignment: .leading, spacing: 8) {
+            strip
+            HStack {
+                Text(IconCatalog.title(for: symbol))
+                    .font(.caption)
+                    .foregroundStyle(.secondary)
+                Spacer()
+                Button("Browse all") { showAll = true }
+                    .font(.caption.weight(.semibold))
+            }
+        }
+        .sheet(isPresented: $showAll) {
+            IconPickerView(symbol: $symbol, allowNone: true)
+        }
+    }
+
+    private var strip: some View {
         ScrollView(.horizontal, showsIndicators: false) {
             HStack(spacing: 8) {
                 ForEach(Self.symbols, id: \.self) { name in

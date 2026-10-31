@@ -98,7 +98,7 @@ struct LiveInfoSettingsView: View {
 struct ScheduleView: View {
     @EnvironmentObject var manager: IslandManager
 
-    private var allPresets: [SavedPreset] { PresetStore.builtIns + manager.savedPresets }
+    private var allPresets: [SavedPreset] { manager.allPresets }
 
     var body: some View {
         ScrollView {

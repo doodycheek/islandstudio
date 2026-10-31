@@ -27,20 +27,37 @@ struct CompactSlot: View {
     let state: IslandState
     var size: CGFloat = 20
     var minimal = false
+    @Environment(\.isLuminanceReduced) private var dimmed
+
+    private var showsRing: Bool { minimal && state.minimalRing }
+
+    private var ringColor: Color {
+        dimmed ? Color.white.opacity(0.5) : state.accentColor.opacity(0.65)
+    }
 
     var body: some View {
         let inner = SlotView(slot: slot, state: state, size: size)
-        if state.islandBg == .none || slot.content == .empty {
-            inner
-        } else if minimal {
-            inner
-                .padding(4)
-                .background(Circle().fill(state.backdropStyle()))
-        } else {
-            inner
-                .padding(.horizontal, 7)
-                .padding(.vertical, 3)
-                .background(Capsule().fill(state.backdropStyle()))
+        Group {
+            if state.islandBg == .none || slot.content == .empty {
+                inner
+            } else if minimal {
+                inner
+                    .padding(4)
+                    .background(Circle().fill(state.backdropStyle()))
+            } else {
+                inner
+                    .padding(.horizontal, 7)
+                    .padding(.vertical, 3)
+                    .background(Capsule().fill(state.backdropStyle()))
+            }
+        }
+        .frame(maxWidth: showsRing ? CGFloat.infinity : nil, maxHeight: showsRing ? CGFloat.infinity : nil)
+        .overlay {
+            if showsRing {
+                Circle()
+                    .strokeBorder(ringColor, lineWidth: 1.5)
+                    .shadow(color: state.accentColor.opacity(dimmed ? 0 : 0.7), radius: state.glow ? 5 : 3)
+            }
         }
     }
 }
@@ -78,19 +95,84 @@ struct LockScreenView: View {
         state.lockTitleHex.isEmpty ? Color.white : Color(hex: state.lockTitleHex)
     }
 
+    /// True on the Always-On Display, where iOS dims the screen and drops fine details.
+    @Environment(\.isLuminanceReduced) private var dimmed
+
+    private var titleAlignment: HorizontalAlignment {
+        state.lockAlign == "center" ? .center : .leading
+    }
+
+    private var showGraph: Bool {
+        !state.graphKind.isEmpty && state.spark.count > 1
+    }
+
     var body: some View {
         Group {
-            switch state.lockLayout {
-            case .classic: classic
-            case .compact: compact
-            case .hero: hero
+            if dimmed {
+                aod
+            } else {
+                switch state.lockLayout {
+                case .classic: classic
+                case .compact: compact
+                case .hero: hero
+                case .clock: bigClock
+                }
             }
         }
         .background {
-            if let colors = state.lockGradientColors {
+            if !dimmed, let colors = state.lockGradientColors {
                 LinearGradient(colors: colors, startPoint: .topLeading, endPoint: .bottomTrailing)
             }
+            if !dimmed && state.lockStyle == .aurora {
+                AuroraBackground(state: state)
+            }
         }
+    }
+
+    /// Always-On Display: big, bright and simple, with plain digits instead of timers.
+    private var aod: some View {
+        HStack(spacing: 12) {
+            SlotView(slot: state.left, state: state, size: 30, decorated: false)
+            VStack(alignment: .leading, spacing: 2) {
+                Text(state.lockTitleText)
+                    .font(.system(size: 18, weight: .bold))
+                Text(ClockFormat.string(state.now, seconds: false, hour12: state.hour12))
+                    .font(.system(size: 14, weight: .medium))
+                    .monospacedDigit()
+            }
+            .lineLimit(1)
+            Spacer(minLength: 4)
+            SlotView(slot: state.right, state: state, size: 30, decorated: false)
+        }
+        .padding(16)
+        .foregroundStyle(Color.white)
+    }
+
+    private var bigClock: some View {
+        VStack(spacing: 6) {
+            HStack {
+                SlotBadge(slot: state.left, state: state, accent: accent, diameter: 36)
+                Spacer()
+                SlotBadge(slot: state.right, state: state, accent: accent, diameter: 36)
+            }
+            Text(ClockFormat.string(state.now, seconds: false, hour12: state.hour12))
+                .font(.system(size: 54, weight: .bold))
+                .fontDesign(state.design)
+                .monospacedDigit()
+                .minimumScaleFactor(0.6)
+                .lineLimit(1)
+            if !state.lockTitleText.isEmpty {
+                Text(state.lockTitleText)
+                    .font(.system(size: 15, weight: .semibold))
+                    .foregroundStyle(titleColor)
+                    .lineLimit(1)
+            }
+            if showGraph { SparklineView(values: state.spark, color: accent).frame(height: 28) }
+            if state.lockChips { InfoChipRow(state: state) }
+            if state.lockAccent { AccentBar(state: state) }
+        }
+        .padding(16)
+        .foregroundStyle(.white)
     }
 
     private var classic: some View {
@@ -101,6 +183,7 @@ struct LockScreenView: View {
                 Spacer(minLength: 4)
                 SlotBadge(slot: state.right, state: state, accent: accent, diameter: 46)
             }
+            if showGraph { SparklineView(values: state.spark, color: accent).frame(height: 28) }
             if state.lockChips { InfoChipRow(state: state) }
             if state.lockAccent { AccentBar(state: state) }
         }
@@ -138,6 +221,7 @@ struct LockScreenView: View {
                 SlotBadge(slot: state.right, state: state, accent: accent, diameter: 56)
             }
             titles(titleSize: 24, subtitleSize: 14)
+            if showGraph { SparklineView(values: state.spark, color: accent).frame(height: 32) }
             if state.lockChips { InfoChipRow(state: state) }
             if state.lockAccent { AccentBar(state: state) }
         }
@@ -146,7 +230,7 @@ struct LockScreenView: View {
     }
 
     private func titles(titleSize: CGFloat, subtitleSize: CGFloat) -> some View {
-        VStack(alignment: .leading, spacing: 2) {
+        VStack(alignment: titleAlignment, spacing: 2) {
             HStack(spacing: 6) {
                 if !state.lockIcon.isEmpty {
                     Image(systemName: state.lockIcon)
@@ -165,6 +249,7 @@ struct LockScreenView: View {
         .fontDesign(state.design)
         .lineLimit(1)
         .minimumScaleFactor(0.8)
+        .frame(maxWidth: state.lockAlign == "center" ? CGFloat.infinity : nil)
     }
 }
 
@@ -319,6 +404,37 @@ struct InfoChipRow: View {
             if !state.pomoPhase.isEmpty {
                 InfoChip(icon: "timer", text: focusText)
             }
+        case .nextEvent:
+            if !state.nextEventTitle.isEmpty {
+                InfoChip(icon: "calendar", text: state.nextEventLine)
+            }
+        case .uv:
+            if let uv = state.uv {
+                InfoChip(icon: "sun.max.fill", text: "UV \(Int(uv.rounded()))", multicolor: true)
+            }
+        case .rain:
+            if let chance = state.rainChance {
+                InfoChip(icon: "drop.fill", text: "\(chance)%")
+            }
+        case .wind:
+            if let speed = state.wind {
+                InfoChip(icon: "wind", text: "\(speed)")
+            }
+        case .aqi:
+            if let value = state.aqi {
+                InfoChip(icon: "leaf.fill", text: "AQI \(value)")
+            }
+        case .network:
+            InfoChip(icon: state.netType == "wifi" ? "wifi" : (state.netType == "cell" ? "antenna.radiowaves.left.and.right" : "wifi.slash"),
+                     text: state.netType == "wifi" ? "Wi-Fi" : (state.netType == "cell" ? "Cellular" : "Offline"))
+        case .storage:
+            if state.storageGB >= 0 {
+                InfoChip(icon: "internaldrive.fill", text: "\(state.storageGB) GB")
+            }
+        case .streak:
+            if state.streak > 0 {
+                InfoChip(icon: "flame.fill", text: "\(state.streak)")
+            }
         }
     }
 }
@@ -387,7 +503,7 @@ struct ExpandedTitle: View {
                 Image(systemName: state.expandedIcon)
                     .foregroundStyle(state.accentColor)
             }
-            Text(state.bannerText.isEmpty ? state.expandedTitle : state.bannerText)
+            Text(state.bannerText.isEmpty ? state.expandedTitleText : state.bannerText)
                 .foregroundStyle(titleColor)
         }
         .font(titleFont)
@@ -442,8 +558,8 @@ struct ExpandedBottom: View {
 
     var body: some View {
         VStack(spacing: 8) {
-            if !state.expandedSubtitle.isEmpty {
-                Text(state.expandedSubtitle)
+            if !state.expandedSubtitleText.isEmpty {
+                Text(state.expandedSubtitleText)
                     .font(.subheadline)
                     .fontDesign(state.design)
                     .foregroundStyle(.secondary)
@@ -456,6 +572,21 @@ struct ExpandedBottom: View {
             if state.expandedBar {
                 AccentBar(state: state)
                     .padding(.horizontal, 8)
+            }
+            if !state.graphKind.isEmpty && state.spark.count > 1 {
+                SparklineView(values: state.spark, color: state.accentColor)
+                    .frame(height: 26)
+                    .padding(.horizontal, 8)
+            }
+            if !state.reactions.isEmpty {
+                HStack(spacing: 14) {
+                    ForEach(state.reactions, id: \.self) { emoji in
+                        Button(intent: ReactIntent(emoji: emoji)) {
+                            Text(emoji).font(.title2)
+                        }
+                    }
+                }
+                .buttonStyle(.plain)
             }
             if state.showCounterButtons {
                 HStack(spacing: 18) {
@@ -500,5 +631,61 @@ struct ExpandedBottom: View {
             }
         }
         .islandPanel(state)
+    }
+}
+
+// MARK: - Mini graphs and aurora
+
+/// A tiny line chart of recent values (battery or steps).
+struct SparklineView: View {
+    let values: [Int]
+    let color: Color
+
+    var body: some View {
+        GeometryReader { geo in
+            let low = Double(values.min() ?? 0)
+            let high = max(Double(values.max() ?? 1), low + 1)
+            let count = max(values.count - 1, 1)
+            let points: [CGPoint] = values.enumerated().map { item in
+                let x = geo.size.width * CGFloat(item.offset) / CGFloat(count)
+                let y = geo.size.height * (1 - CGFloat((Double(item.element) - low) / (high - low)))
+                return CGPoint(x: x, y: y)
+            }
+            ZStack {
+                Path { path in
+                    guard let first = points.first else { return }
+                    path.move(to: first)
+                    for point in points.dropFirst() { path.addLine(to: point) }
+                    if let last = points.last {
+                        path.addLine(to: CGPoint(x: last.x, y: geo.size.height))
+                        path.addLine(to: CGPoint(x: first.x, y: geo.size.height))
+                        path.closeSubpath()
+                    }
+                }
+                .fill(LinearGradient(colors: [color.opacity(0.35), color.opacity(0.02)],
+                                     startPoint: .top, endPoint: .bottom))
+                Path { path in
+                    guard let first = points.first else { return }
+                    path.move(to: first)
+                    for point in points.dropFirst() { path.addLine(to: point) }
+                }
+                .stroke(color, style: StrokeStyle(lineWidth: 2, lineCap: .round, lineJoin: .round))
+            }
+        }
+    }
+}
+
+/// A slowly shifting color wash behind the Lock Screen card.
+struct AuroraBackground: View {
+    let state: IslandState
+
+    var body: some View {
+        let drift = Double(state.frame % 600) / 600 * 0.3
+        LinearGradient(
+            colors: [state.accentColor.darker(0.35),
+                     state.accentColor.hueShifted(0.12 + drift).darker(0.32),
+                     state.accentColor.hueShifted(0.32 - drift).darker(0.3)],
+            startPoint: .topLeading, endPoint: .bottomTrailing)
+            .animation(.easeInOut(duration: 1), value: state.frame)
     }
 }

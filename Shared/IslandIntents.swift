@@ -5,6 +5,7 @@ enum IslandCommand: Sendable {
     case next, previous, togglePause
     case counterUp, counterDown, counterReset, togglePomodoro
     case musicPlayPause, musicNext, musicPrevious, surprise
+    case react(String)
 }
 
 // These intents are compiled into both the app and the widget (the widget needs them for its buttons),
@@ -145,6 +146,29 @@ struct SurpriseIntent: LiveActivityIntent {
     func perform() async throws -> some IntentResult {
         #if ISLAND_APP
         await IslandManager.shared.handle(.surprise)
+        #endif
+        return .result()
+    }
+}
+
+struct ReactIntent: LiveActivityIntent {
+    static var title: LocalizedStringResource = "Send a Reaction"
+    static var description: IntentDescription = IntentDescription("Pops a reaction out of your island.")
+
+    @Parameter(title: "Emoji")
+    var emoji: String
+
+    init() {
+        self.emoji = "❤️"
+    }
+
+    init(emoji: String) {
+        self.emoji = emoji
+    }
+
+    func perform() async throws -> some IntentResult {
+        #if ISLAND_APP
+        await IslandManager.shared.handle(.react(emoji))
         #endif
         return .result()
     }

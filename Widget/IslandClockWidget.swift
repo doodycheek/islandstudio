@@ -87,7 +87,31 @@ struct ClockProvider: AppIntentTimelineProvider {
 struct ClockWidgetView: View {
     let entry: ClockEntry
 
+    @Environment(\.widgetFamily) private var family
+
     var body: some View {
+        switch family {
+        case .accessoryRectangular:
+            VStack(alignment: .leading, spacing: 2) {
+                Text(entry.date, style: .time)
+                    .font(.system(size: 26, weight: .bold, design: .rounded))
+                Text(entry.date, format: .dateTime.weekday(.wide).month().day())
+                    .font(.caption)
+            }
+            .frame(maxWidth: .infinity, alignment: .leading)
+        case .accessoryCircular:
+            Text(entry.date, style: .time)
+                .font(.system(size: 15, weight: .bold, design: .rounded))
+                .minimumScaleFactor(0.5)
+                .multilineTextAlignment(.center)
+        case .accessoryInline:
+            Text(entry.date, style: .time)
+        default:
+            home
+        }
+    }
+
+    private var home: some View {
         VStack(alignment: .leading, spacing: 4) {
             Spacer(minLength: 0)
             Text(entry.date, style: .time)
@@ -119,6 +143,6 @@ struct IslandClockWidget: Widget {
         }
         .configurationDisplayName("Island Clock")
         .description("A clock with the same looks as your island presets.")
-        .supportedFamilies([.systemSmall, .systemMedium])
+        .supportedFamilies([.systemSmall, .systemMedium, .accessoryRectangular, .accessoryCircular, .accessoryInline])
     }
 }

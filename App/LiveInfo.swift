@@ -15,6 +15,14 @@ struct LiveInfo: Equatable {
     var weatherSymbol = ""
     var cryptoPrice: Double? = nil
     var cryptoChange: Double? = nil
+    var uv: Double? = nil
+    var rainChance: Int? = nil
+    var wind: Int? = nil
+    var aqi: Int? = nil
+    var nextEventTitle = ""
+    var nextEventStart = Date()
+    var nextEventInProgress = false
+    var storageGB = -1
 }
 
 // MARK: - Music (built-in Music app only)

@@ -9,6 +9,9 @@ struct SlotView: View {
     var size: CGFloat = 20
     var decorated = true
 
+    /// True on the Always-On Display, where iOS dims everything. We switch to plain bright white.
+    @Environment(\.isLuminanceReduced) private var dimmed
+
     /// Size after the slot's own scale.
     private var sz: CGFloat { size * CGFloat(min(max(slot.scale, 0.5), 1.8)) }
 
@@ -37,6 +40,18 @@ struct SlotView: View {
     /// Color that reacts to live data (Live color mode).
     private var liveColor: Color {
         switch slot.content {
+        case .airQuality:
+            let value = state.aqi ?? 0
+            if value <= 50 { return Color.green }
+            if value <= 100 { return Color.yellow }
+            if value <= 150 { return Color.orange }
+            return Color.red
+        case .uv:
+            let value = state.uv ?? 0
+            if value >= 8 { return Color.red }
+            if value >= 6 { return Color.orange }
+            if value >= 3 { return Color.yellow }
+            return Color.green
         case .crypto:
             return (state.cryptoChange ?? 0) >= 0 ? Color.green : Color.red
         case .pomodoro:
@@ -48,6 +63,7 @@ struct SlotView: View {
 
     /// Fill for text and icons: solid, gradient, alternating colors, or live.
     private var paint: AnyShapeStyle {
+        if dimmed { return AnyShapeStyle(Color.white) }
         switch slot.colorMode {
         case .solid: return AnyShapeStyle(c1)
         case .gradient: return AnyShapeStyle(gradient)
@@ -58,6 +74,7 @@ struct SlotView: View {
 
     /// Progress views and shapes only take a plain color.
     private var tintColor: Color {
+        if dimmed { return Color.white }
         switch slot.colorMode {
         case .cycle: return cycleColor
         case .live: return liveColor
@@ -68,6 +85,17 @@ struct SlotView: View {
     private var rainbowHue: Double {
         let value = Double(state.frame % 100_000) * max(0.25, slot.speed) / 12
         return value - floor(value)
+    }
+
+    /// Frame count for scrolling text, sped up by the slot's text speed.
+    private var scrollFrame: Int { state.frame &* max(1, Int(slot.textSpeed.rounded())) }
+
+    private func styled(_ text: String) -> String {
+        switch slot.caseStyle {
+        case "upper": return text.uppercased()
+        case "lower": return text.lowercased()
+        default: return text
+        }
     }
 
     private var marqueeWidth: Int { sz < 28 ? 8 : 10 }
@@ -107,10 +135,20 @@ struct SlotView: View {
                     radius: state.glow ? sz * 0.25 * glowAmount : 0)
             .shadow(color: state.glow ? glowColor.opacity(0.5) : Color.clear,
                     radius: state.glow ? sz * 0.5 * glowAmount : 0)
+            .shadow(color: slot.textShadow ? Color.black.opacity(0.7) : Color.clear,
+                    radius: slot.textShadow ? 1.5 : 0, x: 0, y: slot.textShadow ? 1 : 0)
             .animation(slot.colorMode == .cycle ? Animation.easeInOut(duration: 0.8) : nil, value: state.frame)
             .modifier(SlotMotion(anim: slot.anim, frame: state.frame, size: sz, speed: slot.speed))
             .background {
-                if decorated { shapeBackground }
+                if decorated && !dimmed { shapeBackground }
+            }
+            .overlay(alignment: .topTrailing) {
+                if decorated && !slot.badge.isEmpty && !dimmed {
+                    Image(systemName: slot.badge)
+                        .font(.system(size: max(7, sz * 0.38)))
+                        .foregroundStyle(Color(hex: slot.badgeHex))
+                        .offset(x: sz * 0.3, y: -sz * 0.25)
+                }
             }
             .offset(x: decorated ? CGFloat(slot.offsetX) : 0)
     }
@@ -141,7 +179,7 @@ struct SlotView: View {
             EmptyView()
 
         case .text:
-            Text(slot.text)
+            Text(styled(TextVars.resolve(slot.text, state: state)))
                 .font(.system(size: sz * 0.75))
                 .foregroundStyle(paint)
                 .lineLimit(1)
@@ -184,20 +222,14 @@ struct SlotView: View {
             }
 
         case .clock:
-            Text(state.now, format: .dateTime.hour().minute())
+            Text(ClockFormat.string(state.now, seconds: false, hour12: state.hour12))
                 .font(.system(size: sz * 0.7))
                 .monospacedDigit()
                 .foregroundStyle(paint)
                 .lineLimit(1)
 
         case .liveClock:
-            // Counting up from midnight = live time of day with seconds, no updates needed.
-            Text(Calendar.current.startOfDay(for: Date()), style: .timer)
-                .font(.system(size: sz * 0.65))
-                .monospacedDigit()
-                .foregroundStyle(paint)
-                .multilineTextAlignment(.center)
-                .frame(width: sz * 3.4)
+            LiveClockText(state: state, size: sz * 0.65, paint: paint)
 
         case .date:
             Text(state.now, format: .dateTime.month(.abbreviated).day())
@@ -215,7 +247,7 @@ struct SlotView: View {
             .foregroundStyle(color)
 
         case .music:
-            Text(Marquee.window(musicLine, frame: state.musicPlaying ? state.frame : 0, width: marqueeWidth))
+            Text(Marquee.window(styled(musicLine), frame: state.musicPlaying ? scrollFrame : 0, width: marqueeWidth))
                 .font(.system(size: marqueeFont))
                 .fontDesign(.monospaced)
                 .foregroundStyle(paint)
@@ -304,7 +336,8 @@ struct SlotView: View {
         case .worldClock:
             HStack(spacing: 3) {
                 if !slot.text.isEmpty { Text(slot.text) }
-                Text(state.now, format: Date.FormatStyle(timeZone: TimeZone(identifier: state.worldTZ) ?? TimeZone.current).hour().minute())
+                Text(ClockFormat.string(state.now, tz: TimeZone(identifier: state.worldTZ) ?? TimeZone.current,
+                                        seconds: false, hour12: state.hour12))
                     .monospacedDigit()
             }
             .font(.system(size: sz * 0.66))
@@ -326,8 +359,147 @@ struct SlotView: View {
             PomodoroLabel(state: state, paint: paint, size: sz)
 
         case .messages:
-            Text(Marquee.window(state.rotatingText.isEmpty ? "Add messages in Settings" : state.rotatingText,
-                                frame: state.frame, width: marqueeWidth))
+            Text(Marquee.window(styled(TextVars.resolve(state.rotatingText.isEmpty ? "Add messages in Settings"
+                                                                                        : state.rotatingText, state: state)),
+                                frame: scrollFrame, width: marqueeWidth))
+                .font(.system(size: marqueeFont))
+                .fontDesign(.monospaced)
+                .foregroundStyle(paint)
+                .lineLimit(1)
+                .minimumScaleFactor(0.6)
+
+        case .nextEvent:
+            HStack(spacing: 3) {
+                Image(systemName: "calendar")
+                Text(state.nextEventTitle.isEmpty ? "No events" : state.nextEventCountdown)
+                if sz >= 28 && !state.nextEventTitle.isEmpty {
+                    Text(String(state.nextEventTitle.prefix(10)))
+                }
+            }
+            .font(.system(size: sz * 0.62))
+            .foregroundStyle(paint)
+            .lineLimit(1)
+            .minimumScaleFactor(0.6)
+
+        case .network:
+            Image(systemName: state.netType == "wifi" ? "wifi"
+                  : (state.netType == "cell" ? "antenna.radiowaves.left.and.right" : "wifi.slash"))
+                .font(.system(size: sz * 0.78))
+                .foregroundStyle(paint)
+
+        case .lowPower:
+            Image(systemName: state.lowPower ? "battery.25" : "battery.100")
+                .font(.system(size: sz * 0.8))
+                .foregroundStyle(state.lowPower && !dimmed ? AnyShapeStyle(Color.yellow) : paint)
+                .opacity(state.lowPower ? 1 : 0.5)
+
+        case .uv:
+            HStack(spacing: 3) {
+                Image(systemName: "sun.max.fill")
+                Text(state.uv.map { String(format: "%.0f", $0) } ?? "--")
+            }
+            .font(.system(size: sz * 0.62))
+            .foregroundStyle(paint)
+            .lineLimit(1)
+
+        case .rainChance:
+            HStack(spacing: 3) {
+                Image(systemName: "drop.fill")
+                Text(state.rainChance.map { "\($0)%" } ?? "--")
+            }
+            .font(.system(size: sz * 0.62))
+            .foregroundStyle(paint)
+            .lineLimit(1)
+
+        case .wind:
+            HStack(spacing: 3) {
+                Image(systemName: "wind")
+                Text(state.wind.map { "\($0)" } ?? "--")
+            }
+            .font(.system(size: sz * 0.62))
+            .foregroundStyle(paint)
+            .lineLimit(1)
+
+        case .airQuality:
+            HStack(spacing: 3) {
+                Image(systemName: "leaf.fill")
+                Text(state.aqi.map { "\($0)" } ?? "--")
+            }
+            .font(.system(size: sz * 0.62))
+            .foregroundStyle(paint)
+            .lineLimit(1)
+
+        case .storage:
+            HStack(spacing: 3) {
+                Image(systemName: "internaldrive.fill")
+                Text(state.storageGB >= 0 ? "\(state.storageGB)GB" : "--")
+            }
+            .font(.system(size: sz * 0.6))
+            .foregroundStyle(paint)
+            .lineLimit(1)
+            .minimumScaleFactor(0.6)
+
+        case .volume:
+            HStack(spacing: 3) {
+                Image(systemName: state.volume == 0 ? "speaker.slash.fill" : "speaker.wave.2.fill")
+                Text(state.volume >= 0 ? "\(state.volume)%" : "--")
+            }
+            .font(.system(size: sz * 0.6))
+            .foregroundStyle(paint)
+            .lineLimit(1)
+            .minimumScaleFactor(0.6)
+
+        case .brightness:
+            HStack(spacing: 3) {
+                Image(systemName: "sun.min.fill")
+                Text(state.brightnessPct >= 0 ? "\(state.brightnessPct)%" : "--")
+            }
+            .font(.system(size: sz * 0.6))
+            .foregroundStyle(paint)
+            .lineLimit(1)
+            .minimumScaleFactor(0.6)
+
+        case .stepsRing:
+            let goal = max(1, state.stepsGoal)
+            let progress = state.steps >= 0 ? min(1.0, Double(state.steps) / Double(goal)) : 0.0
+            RingGauge(progress: progress, color: tintColor, size: sz, symbol: "figure.walk")
+
+        case .dayProgress:
+            let start = Calendar.current.startOfDay(for: state.now)
+            let progress = min(1.0, max(0.0, state.now.timeIntervalSince(start) / 86_400))
+            RingGauge(progress: progress, color: tintColor, size: sz, symbol: "sun.max.fill")
+
+        case .yearProgress:
+            let day = Calendar.current.ordinality(of: .day, in: .year, for: state.now) ?? 1
+            let total = Calendar.current.range(of: .day, in: .year, for: state.now)?.count ?? 365
+            HStack(spacing: 3) {
+                Image(systemName: "calendar")
+                Text("\(day)/\(total)")
+            }
+            .font(.system(size: sz * 0.58))
+            .foregroundStyle(paint)
+            .lineLimit(1)
+            .minimumScaleFactor(0.6)
+
+        case .streak:
+            HStack(spacing: 3) {
+                Text(slot.text.isEmpty ? "🔥" : slot.text)
+                Text("\(state.streak)").monospacedDigit()
+            }
+            .font(.system(size: sz * 0.66))
+            .foregroundStyle(paint)
+            .lineLimit(1)
+
+        case .breathe:
+            BreatheView(frame: state.frame, color: tintColor, size: sz, speed: slot.speed)
+
+        case .typewriter:
+            let full = styled(TextVars.resolve(slot.text.isEmpty ? "Hello" : slot.text, state: state))
+            let chars = Array(full)
+            let step = max(1, Int(slot.textSpeed.rounded()))
+            let count = (state.frame &* step) % (chars.count + 6)
+            let typed = String(chars.prefix(min(count, chars.count)))
+            Text(Marquee.tail(typed, width: marqueeWidth) + (count < chars.count ? "▌" : ""))
                 .font(.system(size: marqueeFont))
                 .fontDesign(.monospaced)
                 .foregroundStyle(paint)
@@ -355,7 +527,7 @@ struct SlotView: View {
             .frame(width: sz * 2.5)
 
         case .timer:
-            Text(state.sessionStart, style: .timer)
+            TimerText(since: state.sessionStart, now: state.now)
                 .font(.system(size: sz * 0.65))
                 .monospacedDigit()
                 .foregroundStyle(paint)
@@ -390,7 +562,8 @@ struct SlotView: View {
                 .animation(.linear(duration: 0.8), value: state.frame)
 
         case .marquee:
-            Text(Marquee.window(slot.text.isEmpty ? "Island Studio" : slot.text, frame: state.frame, width: marqueeWidth))
+            Text(Marquee.window(styled(TextVars.resolve(slot.text.isEmpty ? "Island Studio" : slot.text, state: state)),
+                                frame: scrollFrame, width: marqueeWidth))
                 .font(.system(size: marqueeFont))
                 .fontDesign(.monospaced)
                 .foregroundStyle(paint)
@@ -509,8 +682,7 @@ struct PomodoroLabel: View {
                 Text("Focus")
             } else {
                 Text(isFocus ? "🍅" : "☕")
-                Text(timerInterval: state.pomoStart...max(state.pomoEnd, state.pomoStart.addingTimeInterval(1)),
-                     countsDown: true, showsHours: false)
+                CountdownText(start: state.pomoStart, end: state.pomoEnd, now: state.now, showsHours: false)
                     .monospacedDigit()
                     .multilineTextAlignment(.center)
                     .frame(width: size * 2.2)
@@ -594,7 +766,7 @@ struct CountdownLabel: View {
                 Text(Self.longFormat(remaining))
             } else {
                 // Under a day: a live ticking countdown, no updates needed.
-                Text(timerInterval: now...target, countsDown: true)
+                CountdownText(start: now, end: target, now: now, showsHours: true)
                     .monospacedDigit()
                     .multilineTextAlignment(.center)
                     .frame(width: size * 3.2)
@@ -634,5 +806,140 @@ enum CryptoFormat {
         if value >= 100 { return String(format: "$%.0f", value) }
         if value >= 1 { return String(format: "$%.2f", value) }
         return String(format: "$%.4f", value)
+    }
+}
+
+// MARK: - Always-On Display aware pieces
+
+/// The live clock with seconds. Normally it ticks by itself with no updates needed. On the Always-On Display
+/// (where iOS turns timers into long text like "6 hours, 12 minutes") it shows the time as plain digits instead.
+struct LiveClockText: View {
+    let state: IslandState
+    let size: CGFloat
+    let paint: AnyShapeStyle
+    @Environment(\.isLuminanceReduced) private var dimmed
+
+    var body: some View {
+        Group {
+            if dimmed {
+                Text(ClockFormat.string(state.now, seconds: true, hour12: state.hour12))
+            } else if state.hour12 == true {
+                twelveHour
+            } else {
+                Text(Calendar.current.startOfDay(for: Date()), style: .timer)
+            }
+        }
+        .font(.system(size: size))
+        .monospacedDigit()
+        .foregroundStyle(paint)
+        .multilineTextAlignment(.center)
+        .lineLimit(1)
+        .minimumScaleFactor(0.6)
+        .frame(width: size * (state.hour12 == true ? 6.6 : 5.2))
+    }
+
+    /// 12-hour time that still ticks by itself: count up from midnight, noon, or yesterday's noon.
+    private var twelveHour: some View {
+        let cal = Calendar.current
+        let moment = Date()
+        let hour = cal.component(.hour, from: moment)
+        let midnight = cal.startOfDay(for: moment)
+        let noon = cal.date(bySettingHour: 12, minute: 0, second: 0, of: moment) ?? midnight
+        let reference: Date
+        if hour == 0 {
+            reference = cal.date(byAdding: .day, value: -1, to: noon) ?? midnight
+        } else if hour >= 13 {
+            reference = noon
+        } else {
+            reference = midnight
+        }
+        return HStack(spacing: 2) {
+            Text(reference, style: .timer)
+            Text(hour < 12 ? "AM" : "PM")
+                .font(.system(size: size * 0.55, weight: .semibold))
+        }
+    }
+}
+
+/// Counts up from a date. Plain digits on the Always-On Display.
+struct TimerText: View {
+    let since: Date
+    let now: Date
+    @Environment(\.isLuminanceReduced) private var dimmed
+
+    var body: some View {
+        if dimmed {
+            Text(ClockFormat.duration(now.timeIntervalSince(since)))
+        } else {
+            Text(since, style: .timer)
+        }
+    }
+}
+
+/// Counts down to a date. Plain digits on the Always-On Display.
+struct CountdownText: View {
+    let start: Date
+    let end: Date
+    let now: Date
+    var showsHours = true
+    @Environment(\.isLuminanceReduced) private var dimmed
+
+    var body: some View {
+        if dimmed {
+            Text(ClockFormat.duration(end.timeIntervalSince(now)))
+        } else {
+            Text(timerInterval: start...max(end, start.addingTimeInterval(1)), countsDown: true, showsHours: showsHours)
+        }
+    }
+}
+
+/// A progress ring with a small icon in the middle.
+struct RingGauge: View {
+    let progress: Double
+    let color: Color
+    let size: CGFloat
+    let symbol: String
+
+    var body: some View {
+        ZStack {
+            Circle()
+                .stroke(color.opacity(0.25), lineWidth: size * 0.14)
+            Circle()
+                .trim(from: 0, to: CGFloat(min(max(progress, 0), 1)))
+                .stroke(color, style: StrokeStyle(lineWidth: size * 0.14, lineCap: .round))
+                .rotationEffect(.degrees(-90))
+            Image(systemName: symbol)
+                .font(.system(size: size * 0.4))
+                .foregroundStyle(color)
+        }
+        .frame(width: size, height: size)
+    }
+}
+
+/// A ring that swells and shrinks, to pace your breathing.
+struct BreatheView: View {
+    let frame: Int
+    let color: Color
+    let size: CGFloat
+    let speed: Double
+
+    var body: some View {
+        let beats = max(2, Int((4 / max(0.5, speed)).rounded()))
+        let inhale = (frame / beats) % 2 == 0
+        ZStack {
+            Circle()
+                .fill(color.opacity(0.22))
+                .scaleEffect(inhale ? 1.0 : 0.5)
+            Circle()
+                .stroke(color, lineWidth: max(1.5, size * 0.1))
+                .scaleEffect(inhale ? 1.0 : 0.5)
+            if size >= 28 {
+                Text(inhale ? "In" : "Out")
+                    .font(.system(size: size * 0.3, weight: .semibold))
+                    .foregroundStyle(color)
+            }
+        }
+        .frame(width: size, height: size)
+        .animation(.easeInOut(duration: Double(beats) - 0.2), value: inhale)
     }
 }

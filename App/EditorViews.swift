@@ -3,7 +3,7 @@ import SwiftUI
 // MARK: - Pinned live preview (stays on screen while you scroll)
 
 enum PreviewMode: String, CaseIterable, Identifiable {
-    case island, expanded, lock
+    case island, expanded, lock, aod
 
     var id: String { rawValue }
 
@@ -11,7 +11,8 @@ enum PreviewMode: String, CaseIterable, Identifiable {
         switch self {
         case .island: return "Island"
         case .expanded: return "Expanded"
-        case .lock: return "Lock Screen"
+        case .lock: return "Lock"
+        case .aod: return "Always-On"
         }
     }
 }
@@ -85,6 +86,27 @@ struct StatusLine: View {
             }
             Spacer(minLength: 4)
             Button {
+                manager.undo()
+            } label: {
+                Image(systemName: "arrow.uturn.backward")
+            }
+            .disabled(!manager.canUndo)
+            .buttonStyle(.plain)
+            .foregroundStyle(manager.canUndo ? accent : Color.secondary.opacity(0.5))
+            Button {
+                manager.redo()
+            } label: {
+                Image(systemName: "arrow.uturn.forward")
+            }
+            .disabled(!manager.canRedo)
+            .buttonStyle(.plain)
+            .foregroundStyle(manager.canRedo ? accent : Color.secondary.opacity(0.5))
+            Image(systemName: manager.comparing ? "eye.fill" : "eye")
+                .foregroundStyle(manager.comparing ? accent : Color.secondary)
+                .onLongPressGesture(minimumDuration: 0, maximumDistance: 60, pressing: { pressing in
+                    manager.comparing = pressing
+                }, perform: {})
+            Button {
                 Task {
                     if manager.isRunning {
                         await manager.stop()
@@ -152,6 +174,18 @@ struct PreviewStage: View {
                     .clipShape(RoundedRectangle(cornerRadius: 22, style: .continuous))
                     .padding(.horizontal, 10)
                     .scaleEffect(state.lockLayout == .hero ? 0.74 : 0.86)
+
+            case .aod:
+                // What the Lock Screen card looks like when your iPhone is asleep on the Always-On Display.
+                LockScreenView(state: state)
+                    .environment(\.isLuminanceReduced, true)
+                    .background(RoundedRectangle(cornerRadius: 22, style: .continuous).fill(Color.black))
+                    .clipShape(RoundedRectangle(cornerRadius: 22, style: .continuous))
+                    .overlay(RoundedRectangle(cornerRadius: 22, style: .continuous)
+                        .strokeBorder(Color.white.opacity(0.12), lineWidth: 1))
+                    .padding(.horizontal, 10)
+                    .opacity(0.9)
+                    .scaleEffect(0.86)
             }
         }
         .environment(\.colorScheme, .dark)
@@ -216,12 +250,23 @@ struct SlotEditor: View {
     let title: String
     @Binding var slot: SlotConfig
     var music = false
+    @State private var showIcons = false
+    @State private var showBadgeIcons = false
 
     private let quickSymbols = ["heart.fill", "star.fill", "bolt.fill", "flame.fill", "moon.fill",
                                 "sparkles", "music.note", "car.fill", "gamecontroller.fill",
                                 "leaf.fill", "crown.fill", "circle.fill", "sun.max.fill", "cloud.fill",
                                 "pawprint.fill", "headphones", "snowflake", "drop.fill", "moon.stars.fill",
                                 "steeringwheel"]
+
+    private var showsTextControls: Bool {
+        slot.content.usesText || slot.content == .messages || slot.content == .music
+    }
+
+    private var scrolls: Bool {
+        let list: [SlotContent] = [.marquee, .messages, .music, .typewriter]
+        return list.contains(slot.content)
+    }
 
     private var hasMotionSpeed: Bool {
         slot.anim != .none || slot.content == .pulse || slot.content == .spin || slot.content == .rainbow
@@ -250,14 +295,57 @@ struct SlotEditor: View {
                 }
             }
 
-            if slot.content.usesText {
-                Section("Text") {
-                    TextField(slot.content.textPlaceholder, text: $slot.text)
+            if showsTextControls {
+                Section {
+                    if slot.content.usesText {
+                        TextField(slot.content.textPlaceholder, text: $slot.text)
+                    }
+                    Picker("Letters", selection: $slot.caseStyle) {
+                        Text("Normal").tag("")
+                        Text("UPPERCASE").tag("upper")
+                        Text("lowercase").tag("lower")
+                    }
+                    .pickerStyle(.segmented)
+                    Toggle("Text shadow", isOn: $slot.textShadow)
+                    if scrolls {
+                        VStack(alignment: .leading, spacing: 4) {
+                            HStack {
+                                Text("Scroll speed")
+                                Spacer()
+                                Text("\(Int(slot.textSpeed.rounded()))x").foregroundStyle(.secondary)
+                            }
+                            Slider(value: $slot.textSpeed, in: 1...4, step: 1)
+                        }
+                    }
+                } header: {
+                    Text("Text")
+                } footer: {
+                    Text("Tip: type \(TextVars.help) in a text box and they fill in live.")
                 }
             }
 
             if slot.content.usesSymbol {
-                Section("Icon") {
+                Section {
+                    Button {
+                        showIcons = true
+                    } label: {
+                        HStack(spacing: 12) {
+                            Image(systemName: slot.symbol.isEmpty ? "nosign" : slot.symbol)
+                                .font(.title2)
+                                .frame(width: 40, height: 40)
+                                .background(RoundedRectangle(cornerRadius: 10, style: .continuous)
+                                    .fill(accent.opacity(0.2)))
+                            VStack(alignment: .leading, spacing: 2) {
+                                Text(IconCatalog.title(for: slot.symbol)).foregroundStyle(.primary)
+                                Text("Tap to browse every icon").font(.caption).foregroundStyle(.secondary)
+                            }
+                            Spacer()
+                            Image(systemName: "chevron.right")
+                                .font(.footnote.weight(.semibold))
+                                .foregroundStyle(.tertiary)
+                        }
+                    }
+                    .buttonStyle(.plain)
                     ScrollView(.horizontal, showsIndicators: false) {
                         HStack(spacing: 10) {
                             ForEach(quickSymbols, id: \.self) { name in
@@ -279,9 +367,13 @@ struct SlotEditor: View {
                         }
                         .padding(.vertical, 4)
                     }
-                    TextField("Or type any SF Symbol name", text: $slot.symbol)
-                        .textInputAutocapitalization(.never)
-                        .autocorrectionDisabled()
+                    DisclosureGroup("Advanced: type an SF Symbol name") {
+                        TextField("SF Symbol name", text: $slot.symbol)
+                            .textInputAutocapitalization(.never)
+                            .autocorrectionDisabled()
+                    }
+                } header: {
+                    Text("Icon")
                 }
             }
 
@@ -325,6 +417,39 @@ struct SlotEditor: View {
             }
 
             Section {
+                if slot.badge.isEmpty {
+                    Button {
+                        slot.badge = "circle.fill"
+                        showBadgeIcons = true
+                    } label: {
+                        Label("Add a badge", systemImage: "plus.circle.fill")
+                    }
+                } else {
+                    Button {
+                        showBadgeIcons = true
+                    } label: {
+                        HStack(spacing: 12) {
+                            Image(systemName: slot.badge)
+                                .foregroundStyle(Color(hex: slot.badgeHex))
+                                .frame(width: 30)
+                            Text(IconCatalog.title(for: slot.badge)).foregroundStyle(.primary)
+                            Spacer()
+                            Text("Change").font(.caption.weight(.semibold))
+                        }
+                    }
+                    .buttonStyle(.plain)
+                    ColorField(title: "Badge color", hex: $slot.badgeHex)
+                    Button("Remove badge", role: .destructive) {
+                        slot.badge = ""
+                    }
+                }
+            } header: {
+                Text("Badge")
+            } footer: {
+                Text("A small icon in the corner of this slot, like a red dot or a heart.")
+            }
+
+            Section {
                 Picker("Animation", selection: $slot.anim) {
                     ForEach(SlotAnim.allCases) { anim in
                         Text(anim.label).tag(anim)
@@ -351,6 +476,12 @@ struct SlotEditor: View {
         .navigationBarTitleDisplayMode(.inline)
         .pinnedPreview(music: music)
         .onAppear { previewMode = PreviewMode.island.rawValue }
+        .sheet(isPresented: $showIcons) {
+            IconPickerView(symbol: $slot.symbol)
+        }
+        .sheet(isPresented: $showBadgeIcons) {
+            IconPickerView(symbol: $slot.badge, allowNone: true)
+        }
         .onChange(of: slot.content) { _, newValue in
             // Weather and crypto look best in their natural, live colors.
             if newValue == .weather || newValue == .crypto { slot.colorMode = .live }
@@ -367,13 +498,13 @@ struct SlotEditor: View {
                     }
                 }
                 .pickerStyle(.segmented)
-                ColorPicker(slot.colorMode == .gradient || slot.colorMode == .cycle ? "First color" : "Color",
-                            selection: colorBinding(\.colorHex))
+                ColorField(title: slot.colorMode == .gradient || slot.colorMode == .cycle ? "First color" : "Color",
+                           hex: $slot.colorHex)
                 if slot.colorMode == .gradient || slot.colorMode == .cycle {
-                    ColorPicker("Second color", selection: colorBinding(\.color2Hex))
+                    ColorField(title: "Second color", hex: $slot.color2Hex)
                     Toggle("Add a third color", isOn: thirdColor)
                     if !slot.color3Hex.isEmpty {
-                        ColorPicker("Third color", selection: colorBinding(\.color3Hex))
+                        ColorField(title: "Third color", hex: $slot.color3Hex)
                     }
                 }
                 if slot.colorMode == .gradient {

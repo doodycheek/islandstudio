@@ -383,6 +383,76 @@ enum PresetStore {
             s.lockBarStyle = .day
             s.expandedChips = true
             s.expandedTitle = "Outside"
+        },
+        make("breathe", "Breathe", "lungs.fill") { (s: inout IslandState) in
+            s.left = SlotConfig(content: .breathe, colorHex: "64D2FFFF", speed: 0.75)
+            s.right = SlotConfig(content: .clock, colorHex: "E0F7FFFF")
+            s.minimal = SlotConfig(content: .breathe, colorHex: "64D2FFFF", speed: 0.75)
+            s.keylineHex = "64D2FFFF"
+            s.fontDesign = "rounded"
+            s.lockStyle = .glass
+            s.expandedTitle = "Breathe"
+            s.expandedSubtitle = "In through the nose, out slowly"
+        },
+        make("daytracker", "Day Tracker", "sun.horizon.fill") { (s: inout IslandState) in
+            s.left = SlotConfig(content: .dayProgress, colorHex: "FF9F0AFF")
+            s.right = SlotConfig(content: .yearProgress, colorHex: "FFD60AFF")
+            s.minimal = SlotConfig(content: .dayProgress, colorHex: "FF9F0AFF")
+            s.keylineHex = "FF9F0AFF"
+            s.lockBarStyle = .day
+            s.expandedChips = true
+            s.expandedTitle = "{day}"
+            s.expandedSubtitle = "{date} · {time}"
+        },
+        make("outdoors", "Outdoors", "figure.hiking") { (s: inout IslandState) in
+            s.left = SlotConfig(content: .weather, colorMode: .live)
+            s.right = SlotConfig(content: .rainChance, colorHex: "64D2FFFF")
+            s.minimal = SlotConfig(content: .weather, colorMode: .live)
+            s.keylineHex = "30D158FF"
+            s.chipKinds = ["uv", "wind", "aqi", "weather"]
+            s.expandedChips = true
+            s.expandedTitle = "Outside"
+            s.expandedSubtitle = "{temp} right now"
+        },
+        make("typing", "Typewriter", "keyboard") { (s: inout IslandState) in
+            s.left = SlotConfig(content: .typewriter, text: "hello {time}", colorHex: "00FF9CFF", textSpeed: 1)
+            s.right = SlotConfig(content: .pulse, symbol: "circle.fill", colorHex: "00FF9CFF")
+            s.minimal = SlotConfig(content: .pulse, symbol: "circle.fill", colorHex: "00FF9CFF")
+            s.keylineHex = "00FF9CFF"
+            s.fontDesign = "monospaced"
+            s.glow = true
+            s.lockStyle = .black
+            s.expandedTitle = "> online"
+        },
+        make("agenda", "Agenda", "calendar.circle.fill") { (s: inout IslandState) in
+            s.left = SlotConfig(content: .nextEvent, colorHex: "FF3B30FF")
+            s.right = SlotConfig(content: .clock, colorHex: "FFFFFFFF")
+            s.minimal = SlotConfig(content: .symbol, symbol: "calendar", colorHex: "FF3B30FF")
+            s.keylineHex = "FF3B30FF"
+            s.chipKinds = ["nextEvent", "battery", "weather", "date"]
+            s.expandedChips = true
+            s.expandedTitle = "{next}"
+            s.expandedSubtitle = "Up next"
+        },
+        make("bigclock", "Big Clock", "clock.fill") { (s: inout IslandState) in
+            s.left = SlotConfig(content: .battery, colorHex: "FFFFFFFF")
+            s.right = SlotConfig(content: .date, colorHex: "FFFFFFFF")
+            s.minimal = SlotConfig(content: .clock, colorHex: "FFFFFFFF")
+            s.keylineHex = "FFFFFFFF"
+            s.lockLayout = .clock
+            s.lockStyle = .aurora
+            s.fontWeight = "heavy"
+            s.expandedTitle = "{time}"
+            s.expandedSubtitle = "{day}, {date}"
+        },
+        make("streak", "Streak", "flame.fill") { (s: inout IslandState) in
+            s.left = SlotConfig(content: .streak, text: "🔥", colorHex: "FF9500FF")
+            s.right = SlotConfig(content: .counter, text: "💧", colorHex: "00C6FFFF")
+            s.minimal = SlotConfig(content: .streak, text: "🔥", colorHex: "FF9500FF")
+            s.keylineHex = "FF9500FF"
+            s.glow = true
+            s.expandedTitle = "{streak} day streak"
+            s.expandedSubtitle = "{counter}/{goal} today"
         }
     ]
 
@@ -400,7 +470,9 @@ enum PresetStore {
         "focus": "Tools", "hydrate": "Tools", "quotes": "Tools",
         "crypto": "Info", "moon": "Info", "worldclock": "Info", "together": "Vibes",
         "bounce": "Fun", "candy": "Fun", "aurora": "Vibes", "retro": "Vibes",
-        "batterysync": "Info", "weatherglow": "Info"
+        "batterysync": "Info", "weatherglow": "Info",
+        "breathe": "Clean", "daytracker": "Info", "outdoors": "Info", "typing": "Neon",
+        "agenda": "Info", "bigclock": "Clean", "streak": "Tools"
     ]
 
     static func category(for id: String) -> String {

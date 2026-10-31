@@ -7,6 +7,7 @@ struct PresetsView: View {
     @State private var showSave = false
     @State private var newName = ""
     @State private var showRename = false
+    @State private var showArrange = false
     @State private var renameID = ""
     @State private var renameText = ""
 
@@ -24,7 +25,7 @@ struct PresetsView: View {
         switch filter {
         case "All": return all
         case "Favorites": return all.filter { manager.isFavorite($0.id) }
-        case "Mine": return manager.savedPresets
+        case "Mine": return all.filter { isMine($0) }
         default: return all.filter { PresetStore.category(for: $0.id) == filter }
         }
     }
@@ -55,6 +56,9 @@ struct PresetsView: View {
                             WideButton(title: "Back to default", icon: "house.fill") {
                                 manager.applyDefault()
                             }
+                        }
+                        WideButton(title: "Arrange & reorder", icon: "arrow.up.arrow.down") {
+                            showArrange = true
                         }
                         if manager.hasUnsavedChanges, let current = manager.currentPreset {
                             WideButton(title: "Save changes to \(current.name)", icon: "arrow.triangle.2.circlepath") {
@@ -111,6 +115,17 @@ struct PresetsView: View {
                                 } label: {
                                     Label("Copy share code", systemImage: "doc.on.doc")
                                 }
+                                Button {
+                                    manager.moveToFront(preset.id)
+                                } label: {
+                                    Label("Move to front", systemImage: "arrow.up.to.line")
+                                }
+                                Button {
+                                    manager.toggleLock(preset.id)
+                                } label: {
+                                    Label(manager.isLocked(preset.id) ? "Unlock" : "Lock so it can't change",
+                                          systemImage: manager.isLocked(preset.id) ? "lock.open" : "lock")
+                                }
                                 if isMine(preset) {
                                     Button {
                                         manager.updatePreset(id: preset.id)
@@ -138,6 +153,9 @@ struct PresetsView: View {
             }
             .background(ThemeBackground())
             .navigationTitle("Presets")
+            .navigationDestination(isPresented: $showArrange) {
+                ArrangePresetsView()
+            }
             .navigationBarTitleDisplayMode(.inline)
             .pinnedPreview()
             .alert("Save preset", isPresented: $showSave) {

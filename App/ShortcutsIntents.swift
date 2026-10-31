@@ -101,3 +101,57 @@ struct IslandShortcuts: AppShortcutsProvider {
                     systemImageName: "shuffle")
     }
 }
+
+// MARK: - Put your own text on the island
+
+struct SetIslandTextIntent: AppIntent {
+    static var title: LocalizedStringResource = "Set Island Text"
+    static var description: IntentDescription = IntentDescription("Puts your own text on the island, with an emoji.")
+
+    @Parameter(title: "Text")
+    var text: String
+
+    @Parameter(title: "Emoji", default: "💬")
+    var emoji: String
+
+    static var parameterSummary: some ParameterSummary {
+        Summary("Show \(\.$emoji) \(\.$text) on the island")
+    }
+
+    func perform() async throws -> some IntentResult {
+        await IslandManager.shared.setStatusText(emoji: emoji, text: text)
+        return .result()
+    }
+}
+
+struct ClearIslandTextIntent: AppIntent {
+    static var title: LocalizedStringResource = "Clear Island Text"
+    static var description: IntentDescription = IntentDescription("Removes your status and goes back to your preset.")
+
+    func perform() async throws -> some IntentResult {
+        await IslandManager.shared.setStatus(nil)
+        return .result()
+    }
+}
+
+// MARK: - Small bubble mode from Shortcuts
+
+struct SetBubbleModeIntent: AppIntent {
+    static var title: LocalizedStringResource = "Set Small Bubble Mode"
+    static var description: IntentDescription = IntentDescription("Turns stay-in-the-small-bubble mode on or off, so another app's Live Activity (like Uber Eats) can take the big spot. Hours of 0 means until you turn it off.")
+
+    @Parameter(title: "On", default: true)
+    var isOn: Bool
+
+    @Parameter(title: "Turn off after (hours)", default: 2)
+    var hours: Int
+
+    static var parameterSummary: some ParameterSummary {
+        Summary("Small bubble mode \(\.$isOn) for \(\.$hours) hours")
+    }
+
+    func perform() async throws -> some IntentResult {
+        await IslandManager.shared.setBubbleMode(isOn, hours: hours)
+        return .result()
+    }
+}

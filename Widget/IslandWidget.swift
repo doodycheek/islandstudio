@@ -7,6 +7,9 @@ struct IslandWidgetBundle: WidgetBundle {
     var body: some Widget {
         IslandLiveActivity()
         IslandClockWidget()
+        IslandBatteryWidget()
+        IslandDaysWidget()
+        IslandMoonWidget()
     }
 }
 

@@ -11,7 +11,11 @@ struct IslandStudioApp: App {
                 .environmentObject(manager)
         }
         .onChange(of: scenePhase) { _, phase in
-            if phase == .active { manager.appBecameActive() }
+            if phase == .active {
+                manager.appBecameActive()
+            } else if phase == .background {
+                manager.saveBackupNow()
+            }
         }
     }
 }

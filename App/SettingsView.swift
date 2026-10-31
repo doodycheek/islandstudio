@@ -1,7 +1,11 @@
 import SwiftUI
+import UniformTypeIdentifiers
 
 struct SettingsView: View {
     @EnvironmentObject var manager: IslandManager
+    @State private var showExporter = false
+    @State private var showImporter = false
+    @State private var exportDocument = BackupDocument(data: Data())
     @AppStorage("themeMode") private var themeMode = ThemeMode.system.rawValue
     @AppStorage("accentChoice") private var accentChoice = AccentChoice.purple.rawValue
 
@@ -18,6 +22,8 @@ struct SettingsView: View {
                     automationCard
                     dataCard
                     backgroundCard
+                    calmCard
+                    healthCard
                     backupCard
                     shortcutsCard
                     Text("Island Studio \(version)")
@@ -30,6 +36,29 @@ struct SettingsView: View {
             .background(ThemeBackground())
             .navigationTitle("Settings")
             .navigationBarTitleDisplayMode(.inline)
+            .fileExporter(isPresented: $showExporter, document: exportDocument, contentType: .json,
+                          defaultFilename: "IslandStudio-backup") { result in
+                switch result {
+                case .success:
+                    manager.status = "Saved to Files"
+                case .failure:
+                    manager.status = "Couldn't save the file"
+                }
+            }
+            .fileImporter(isPresented: $showImporter, allowedContentTypes: [.json, .plainText]) { result in
+                switch result {
+                case .success(let url):
+                    let access = url.startAccessingSecurityScopedResource()
+                    defer { if access { url.stopAccessingSecurityScopedResource() } }
+                    if let data = try? Data(contentsOf: url) {
+                        manager.restoreBackup(data: data)
+                    } else {
+                        manager.status = "Couldn't read that file"
+                    }
+                case .failure:
+                    manager.status = "Couldn't open that file"
+                }
+            }
         }
     }
 
@@ -154,17 +183,110 @@ struct SettingsView: View {
              footer: "Background mode keeps animations, live info, rules, pop-outs and the schedule running. Don't swipe the app away in the app switcher.") {
             ToggleRow(title: "Keep running in background", icon: "arrow.triangle.2.circlepath",
                       color: .yellow, isOn: $manager.keepAlive)
+            RowDivider()
+            BubbleControls()
+            Text("When another app has a Live Activity (like Uber Eats), iOS decides who gets the big spot, and apps can't choose or even see it. It tends to favor whoever updated most recently. This mode updates your island rarely and turns off pop-outs, so the other app takes the big spot. Use the Set Small Bubble Mode action in Shortcuts to switch it on automatically, for example when Uber Eats opens.")
+                .font(.footnote)
+                .foregroundStyle(.secondary)
         }
     }
 
+    private func minuteBinding(_ keyPath: WritableKeyPath<AppSettings, Int>) -> Binding<Date> {
+        Binding(
+            get: {
+                Calendar.current.startOfDay(for: Date())
+                    .addingTimeInterval(TimeInterval(manager.settings[keyPath: keyPath] * 60))
+            },
+            set: { date in
+                let c = Calendar.current.dateComponents([.hour, .minute], from: date)
+                manager.settings[keyPath: keyPath] = (c.hour ?? 0) * 60 + (c.minute ?? 0)
+            }
+        )
+    }
+
+    private var calmCard: some View {
+        Card(title: "Quiet hours & recap", icon: "moon.zzz.fill", tint: .indigo,
+             footer: "During quiet hours the island stays calm: no pop-outs, alerts or sounds, and it can switch to a quieter preset. The recap is one pop-out in the evening with your day: steps, goal, focus rounds and streak.") {
+            ToggleRow(title: "Quiet hours", icon: "moon.zzz.fill", color: .indigo, isOn: $manager.settings.quietEnabled)
+            if manager.settings.quietEnabled {
+                DatePicker("From", selection: minuteBinding(\.quietStartMinute), displayedComponents: .hourAndMinute)
+                DatePicker("Until", selection: minuteBinding(\.quietEndMinute), displayedComponents: .hourAndMinute)
+                HStack {
+                    Text("Quieter preset")
+                    Spacer()
+                    Picker("Quieter preset", selection: $manager.settings.quietPresetID) {
+                        Text("Keep my preset").tag("")
+                        ForEach(manager.allPresets) { preset in
+                            Text(preset.name).tag(preset.id)
+                        }
+                    }
+                    .pickerStyle(.menu)
+                    .labelsHidden()
+                }
+            }
+            RowDivider()
+            ToggleRow(title: "Daily recap", icon: "chart.bar.doc.horizontal.fill", color: .orange,
+                      isOn: $manager.settings.recapEnabled)
+            if manager.settings.recapEnabled {
+                DatePicker("Show at", selection: minuteBinding(\.recapMinute), displayedComponents: .hourAndMinute)
+            }
+            RowDivider()
+            Stepper("Step goal: \(manager.settings.stepsGoal.formatted())", value: $manager.settings.stepsGoal,
+                    in: 2000...30000, step: 500)
+            RowDivider()
+            ToggleRow(title: "Haptic taps", icon: "hand.tap.fill", color: .pink, isOn: $manager.settings.haptics)
+        }
+    }
+
+    private var healthCard: some View {
+        Card(title: "Health check", icon: "stethoscope", tint: .teal,
+             footer: "See whether the island is running, which permissions are on, and whether your battery is read exactly.") {
+            NavigationLink {
+                HealthView()
+            } label: {
+                NavRowLabel(title: "Open health check", icon: "heart.text.square.fill", color: .teal,
+                            value: manager.batteryIsExact ? "Battery exact" : "Battery 5% steps")
+            }
+            .buttonStyle(.plain)
+        }
+    }
+
+    private var autoSaveLine: String {
+        if let date = manager.lastAutoSave {
+            return "Last saved " + date.formatted(.relative(presentation: .named, unitsStyle: .abbreviated))
+        }
+        if manager.autoSaveOK == false {
+            return "Auto-save isn't available with this signing. Use Save to Files below instead."
+        }
+        return "Saves a few seconds after each change."
+    }
+
     private var backupCard: some View {
-        Card(title: "Backup", icon: "externaldrive.fill", tint: .gray,
-             footer: "Copies your settings, presets, rules and photos as one code. Your location is left out. Paste it on a fresh install to restore everything.") {
+        Card(title: "Save & restore", icon: "externaldrive.fill", tint: .gray,
+             footer: "Auto-save keeps a copy in your iPhone's secure storage, which usually survives deleting and re-signing the app if you use the same certificate and bundle ID. If you ever switch certificates, tap Save to Files first. That copy lives outside the app, so it always survives.") {
+            ToggleRow(title: "Auto-save my setup", icon: "checkmark.shield.fill", color: .green,
+                      isOn: $manager.settings.autoSave)
+            Text(autoSaveLine)
+                .font(.footnote)
+                .foregroundStyle(.secondary)
+            RowDivider()
+            ToggleRow(title: "Start the island when the app opens", icon: "play.circle.fill", color: .blue,
+                      isOn: $manager.settings.autoStart)
+            RowDivider()
+            HStack(spacing: 10) {
+                WideButton(title: "Save to Files", icon: "square.and.arrow.up") {
+                    exportDocument = BackupDocument(data: manager.backupData(includeLocation: false) ?? Data())
+                    showExporter = true
+                }
+                WideButton(title: "Restore from file", icon: "folder") {
+                    showImporter = true
+                }
+            }
             HStack(spacing: 10) {
                 WideButton(title: "Copy backup", icon: "doc.on.doc") {
                     manager.copyBackup()
                 }
-                WideButton(title: "Restore", icon: "arrow.down.doc") {
+                WideButton(title: "Paste backup", icon: "arrow.down.doc") {
                     manager.restoreBackupFromClipboard()
                 }
             }
@@ -173,7 +295,7 @@ struct SettingsView: View {
 
     private var shortcutsCard: some View {
         Card(title: "Shortcuts", icon: "square.stack.3d.up.fill", tint: .indigo) {
-            Text("Open the Shortcuts app and search Island Studio for Start Island, Set Island Preset, Next Preset, Surprise, Focus Timer, Add One, music controls and more. Try an automation like: When CarPlay connects → Set Island Preset.")
+            Text("Open the Shortcuts app and search Island Studio for Start Island, Set Island Preset, Next Preset, Surprise, Focus Timer, Add One, music controls, Set Island Text, Clear Island Text and more. Try an automation like: When CarPlay connects → Set Island Preset.")
                 .font(.callout)
         }
     }

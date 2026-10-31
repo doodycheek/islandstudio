@@ -30,8 +30,10 @@ enum SlotContent: String, Codable, CaseIterable, Identifiable, Hashable {
     case empty, text, emoji, symbol, image, slideshow
     case clock, liveClock, date, battery, music, musicArt, steps, weather, countdown
     case daysCounter, moon, crypto, worldClock
-    case counter, pomodoro, messages
-    case ring, bar, timer, pulse, equalizer, spin, rainbow, marquee, musicBars, chargeBar
+    case nextEvent, network, lowPower, uv, rainChance, wind, airQuality, storage, volume, brightness, stepsRing
+    case dayProgress, yearProgress
+    case counter, pomodoro, messages, streak
+    case ring, bar, timer, pulse, equalizer, spin, rainbow, marquee, musicBars, chargeBar, breathe, typewriter
 
     var id: String { rawValue }
 
@@ -40,11 +42,14 @@ enum SlotContent: String, Codable, CaseIterable, Identifiable, Hashable {
         case .empty, .text, .emoji, .symbol, .image, .slideshow:
             return .basic
         case .clock, .liveClock, .date, .battery, .music, .musicArt, .steps, .weather, .countdown,
-             .daysCounter, .moon, .crypto, .worldClock:
+             .daysCounter, .moon, .crypto, .worldClock,
+             .nextEvent, .network, .lowPower, .uv, .rainChance, .wind, .airQuality, .storage, .volume,
+             .brightness, .stepsRing, .dayProgress, .yearProgress:
             return .info
-        case .counter, .pomodoro, .messages:
+        case .counter, .pomodoro, .messages, .streak:
             return .tools
-        case .ring, .bar, .timer, .pulse, .equalizer, .spin, .rainbow, .marquee, .musicBars, .chargeBar:
+        case .ring, .bar, .timer, .pulse, .equalizer, .spin, .rainbow, .marquee, .musicBars, .chargeBar,
+             .breathe, .typewriter:
             return .animated
         }
     }
@@ -70,9 +75,23 @@ enum SlotContent: String, Codable, CaseIterable, Identifiable, Hashable {
         case .moon: return "Moon phase"
         case .crypto: return "Crypto price"
         case .worldClock: return "World clock"
+        case .nextEvent: return "Next calendar event"
+        case .network: return "Wi-Fi / cellular"
+        case .lowPower: return "Low Power Mode"
+        case .uv: return "UV index"
+        case .rainChance: return "Chance of rain"
+        case .wind: return "Wind speed"
+        case .airQuality: return "Air quality"
+        case .storage: return "Free storage"
+        case .volume: return "Volume"
+        case .brightness: return "Screen brightness"
+        case .stepsRing: return "Steps goal ring"
+        case .dayProgress: return "Day progress"
+        case .yearProgress: return "Year progress"
         case .counter: return "Tap counter"
         case .pomodoro: return "Focus timer"
         case .messages: return "Rotating messages"
+        case .streak: return "Goal streak"
         case .ring: return "Looping ring"
         case .bar: return "Looping bar"
         case .timer: return "Running timer"
@@ -83,6 +102,8 @@ enum SlotContent: String, Codable, CaseIterable, Identifiable, Hashable {
         case .marquee: return "Scrolling text"
         case .musicBars: return "Music bars"
         case .chargeBar: return "Charging bar"
+        case .breathe: return "Breathing guide"
+        case .typewriter: return "Typewriter text"
         }
     }
 
@@ -107,9 +128,23 @@ enum SlotContent: String, Codable, CaseIterable, Identifiable, Hashable {
         case .moon: return "moonphase.waxing.gibbous"
         case .crypto: return "bitcoinsign.circle.fill"
         case .worldClock: return "globe"
+        case .nextEvent: return "calendar.circle.fill"
+        case .network: return "wifi"
+        case .lowPower: return "battery.25"
+        case .uv: return "sun.max.fill"
+        case .rainChance: return "drop.fill"
+        case .wind: return "wind"
+        case .airQuality: return "leaf.fill"
+        case .storage: return "internaldrive.fill"
+        case .volume: return "speaker.wave.2.fill"
+        case .brightness: return "sun.min.fill"
+        case .stepsRing: return "figure.walk.circle.fill"
+        case .dayProgress: return "sun.horizon.fill"
+        case .yearProgress: return "calendar"
         case .counter: return "plus.circle.fill"
         case .pomodoro: return "timer"
         case .messages: return "text.bubble.fill"
+        case .streak: return "flame.fill"
         case .ring: return "circle.dashed"
         case .bar: return "rectangle.fill"
         case .timer: return "stopwatch"
@@ -120,6 +155,8 @@ enum SlotContent: String, Codable, CaseIterable, Identifiable, Hashable {
         case .marquee: return "text.alignleft"
         case .musicBars: return "waveform.path"
         case .chargeBar: return "battery.100.bolt"
+        case .breathe: return "lungs.fill"
+        case .typewriter: return "keyboard"
         }
     }
 
@@ -158,9 +195,41 @@ enum SlotContent: String, Codable, CaseIterable, Identifiable, Hashable {
         case .clock:
             return "Refreshes while the app runs in the background."
         case .liveClock:
-            return "Ticks every second on its own, in 24-hour time."
+            return "Ticks every second on its own. Pick 12 or 24-hour under Style → Clock format."
         case .image:
             return "Pick the photo on the main screen under My photo."
+        case .nextEvent:
+            return "Time until your next calendar event. The first time, iOS asks for calendar access."
+        case .network:
+            return "Shows whether you're on Wi-Fi, cellular or offline."
+        case .lowPower:
+            return "Lights up yellow when Low Power Mode is on."
+        case .uv:
+            return "Today's UV index for your location. Set your location under Settings → Live info."
+        case .rainChance:
+            return "Chance of rain this hour. Set your location under Settings → Live info."
+        case .wind:
+            return "Wind speed right now. Set your location under Settings → Live info."
+        case .airQuality:
+            return "US air quality index. Live color goes green, yellow, orange, red."
+        case .storage:
+            return "How much free space your iPhone has left."
+        case .volume:
+            return "Your current volume."
+        case .brightness:
+            return "Your current screen brightness."
+        case .stepsRing:
+            return "A ring that fills as you walk toward your daily step goal."
+        case .dayProgress:
+            return "How much of today has gone by, as a ring."
+        case .yearProgress:
+            return "Which day of the year it is."
+        case .streak:
+            return "Days in a row you've hit your counter goal. Set the goal under Settings → Tools."
+        case .breathe:
+            return "A ring that grows and shrinks to pace your breathing. Speed changes the rhythm."
+        case .typewriter:
+            return "Types your text out one letter at a time. Text can use {battery}, {time} and more."
         default:
             return nil
         }
@@ -170,7 +239,9 @@ enum SlotContent: String, Codable, CaseIterable, Identifiable, Hashable {
         switch self {
         case .emoji: return "Emoji"
         case .countdown: return "Label or emoji (optional)"
-        case .marquee: return "Scrolling message"
+        case .marquee: return "Scrolling message (can use {battery}, {time}…)"
+        case .typewriter: return "Text to type out"
+        case .streak: return "Emoji (optional, like 🔥)"
         case .counter: return "Emoji (optional, like 💧)"
         case .daysCounter: return "Emoji or label (like 💜)"
         case .worldClock: return "City or emoji (like 🇯🇵)"
@@ -181,6 +252,7 @@ enum SlotContent: String, Codable, CaseIterable, Identifiable, Hashable {
     var usesText: Bool {
         self == .text || self == .emoji || self == .marquee || self == .countdown
             || self == .counter || self == .daysCounter || self == .worldClock
+            || self == .typewriter || self == .streak
     }
 
     var usesSymbol: Bool { self == .symbol || self == .pulse || self == .spin || self == .rainbow }
@@ -188,7 +260,8 @@ enum SlotContent: String, Codable, CaseIterable, Identifiable, Hashable {
     /// Compact, square-ish content (gets a round badge on the Lock Screen). Text-like content gets a pill.
     var isIconLike: Bool {
         switch self {
-        case .symbol, .emoji, .image, .slideshow, .musicArt, .ring, .pulse, .spin, .rainbow, .equalizer, .musicBars:
+        case .symbol, .emoji, .image, .slideshow, .musicArt, .ring, .pulse, .spin, .rainbow, .equalizer, .musicBars,
+             .breathe, .stepsRing, .dayProgress, .network, .lowPower:
             return true
         default:
             return false
@@ -204,7 +277,7 @@ enum SlotContent: String, Codable, CaseIterable, Identifiable, Hashable {
 // MARK: - Style options
 
 enum LockStyle: String, Codable, CaseIterable, Identifiable, Hashable {
-    case tinted, black, glass, gradient, custom
+    case tinted, black, glass, gradient, custom, aurora
 
     var id: String { rawValue }
 
@@ -215,12 +288,13 @@ enum LockStyle: String, Codable, CaseIterable, Identifiable, Hashable {
         case .glass: return "Glass"
         case .gradient: return "Gradient"
         case .custom: return "Custom"
+        case .aurora: return "Aurora"
         }
     }
 }
 
 enum LockLayout: String, Codable, CaseIterable, Identifiable, Hashable {
-    case classic, compact, hero
+    case classic, compact, hero, clock
 
     var id: String { rawValue }
 
@@ -229,6 +303,7 @@ enum LockLayout: String, Codable, CaseIterable, Identifiable, Hashable {
         case .classic: return "Classic"
         case .compact: return "Compact"
         case .hero: return "Hero"
+        case .clock: return "Big clock"
         }
     }
 }
@@ -372,6 +447,7 @@ enum SlotAnim: String, Codable, CaseIterable, Identifiable, Hashable {
 /// Info chips for the Lock Screen and expanded view.
 enum ChipKind: String, Codable, CaseIterable, Identifiable, Hashable {
     case battery, weather, steps, date, moon, counter, crypto, countdown, focus
+    case nextEvent, uv, rain, wind, aqi, network, storage, streak
 
     var id: String { rawValue }
 
@@ -386,6 +462,14 @@ enum ChipKind: String, Codable, CaseIterable, Identifiable, Hashable {
         case .crypto: return "Crypto"
         case .countdown: return "Countdown"
         case .focus: return "Focus"
+        case .nextEvent: return "Next event"
+        case .uv: return "UV"
+        case .rain: return "Rain chance"
+        case .wind: return "Wind"
+        case .aqi: return "Air quality"
+        case .network: return "Network"
+        case .storage: return "Storage"
+        case .streak: return "Streak"
         }
     }
 }
@@ -444,10 +528,16 @@ struct SlotConfig: Codable, Hashable {
     var shape: SlotShape = .none
     var anim: SlotAnim = .none
     var speed: Double = 1
+    var badge: String = ""
+    var badgeHex: String = "FF3B30FF"
+    var caseStyle: String = ""
+    var textShadow = false
+    var textSpeed: Double = 1
 
     enum CodingKeys: String, CodingKey {
         case content, text, symbol, colorHex, color2Hex, colorMode
         case color3Hex, gradientAngle, useAccent, scale, offsetX, shape, anim, speed
+        case badge, badgeHex, caseStyle, textShadow, textSpeed
     }
 }
 
@@ -470,6 +560,11 @@ extension SlotConfig {
         shape = c.value(.shape, default: shape)
         anim = c.value(.anim, default: anim)
         speed = c.value(.speed, default: speed)
+        badge = c.value(.badge, default: badge)
+        badgeHex = c.value(.badgeHex, default: badgeHex)
+        caseStyle = c.value(.caseStyle, default: caseStyle)
+        textShadow = c.value(.textShadow, default: textShadow)
+        textSpeed = c.value(.textSpeed, default: textSpeed)
     }
 
     // Compact encoding: values left at their default aren't written, keeping the island under 4 KB.
@@ -490,6 +585,11 @@ extension SlotConfig {
         try c.put(shape, d.shape, .shape)
         try c.put(anim, d.anim, .anim)
         try c.put(speed, d.speed, .speed)
+        try c.put(badge, d.badge, .badge)
+        try c.put(badgeHex, d.badgeHex, .badgeHex)
+        try c.put(caseStyle, d.caseStyle, .caseStyle)
+        try c.put(textShadow, d.textShadow, .textShadow)
+        try c.put(textSpeed, d.textSpeed, .textSpeed)
     }
 }
 
@@ -568,6 +668,25 @@ struct IslandState: Codable, Hashable {
     var worldTZ = ""
     var slideData: Data? = nil
     var buttonKinds: [String] = ["prev", "pause", "next"]
+    var minimalRing = true
+    var clockMode = "auto"
+    var lockAlign = "leading"
+    var graphKind = ""
+    var spark: [Int] = []
+    var reactions: [String] = []
+    var nextEventTitle = ""
+    var nextEventStart = Date()
+    var netType = ""
+    var lowPower = false
+    var uv: Double? = nil
+    var rainChance: Int? = nil
+    var wind: Int? = nil
+    var aqi: Int? = nil
+    var storageGB = -1
+    var volume = -1
+    var brightnessPct = -1
+    var stepsGoal = 10_000
+    var streak = 0
 
     enum CodingKeys: String, CodingKey {
         case left, right, minimal, expandedTitle, expandedSubtitle, keylineHex, fontDesign, bold, imageData
@@ -580,6 +699,8 @@ struct IslandState: Codable, Hashable {
         case rotatingText, counter, counterGoal, showCounterButtons, showTimerButton
         case pomoPhase, pomoStart, pomoEnd, daysSince, cryptoSymbol, cryptoPrice, cryptoChange, worldTZ
         case slideData, buttonKinds
+        case minimalRing, clockMode, lockAlign, graphKind, spark, reactions, nextEventTitle, nextEventStart, netType, lowPower
+        case uv, rainChance, wind, aqi, storageGB, volume, brightnessPct, stepsGoal, streak
     }
 
     var design: Font.Design {
@@ -667,6 +788,25 @@ extension IslandState {
         worldTZ = c.value(.worldTZ, default: worldTZ)
         slideData = c.optional(.slideData)
         buttonKinds = c.value(.buttonKinds, default: buttonKinds)
+        minimalRing = c.value(.minimalRing, default: minimalRing)
+        clockMode = c.value(.clockMode, default: clockMode)
+        lockAlign = c.value(.lockAlign, default: lockAlign)
+        graphKind = c.value(.graphKind, default: graphKind)
+        spark = c.value(.spark, default: spark)
+        reactions = c.value(.reactions, default: reactions)
+        nextEventTitle = c.value(.nextEventTitle, default: nextEventTitle)
+        nextEventStart = c.value(.nextEventStart, default: nextEventStart)
+        netType = c.value(.netType, default: netType)
+        lowPower = c.value(.lowPower, default: lowPower)
+        uv = c.optional(.uv)
+        rainChance = c.optional(.rainChance)
+        wind = c.optional(.wind)
+        aqi = c.optional(.aqi)
+        storageGB = c.value(.storageGB, default: storageGB)
+        volume = c.value(.volume, default: volume)
+        brightnessPct = c.value(.brightnessPct, default: brightnessPct)
+        stepsGoal = c.value(.stepsGoal, default: stepsGoal)
+        streak = c.value(.streak, default: streak)
     }
 
     // Compact encoding: values left at their default aren't written, keeping the island under 4 KB.
@@ -741,6 +881,25 @@ extension IslandState {
         try c.put(worldTZ, d.worldTZ, .worldTZ)
         try c.encodeIfPresent(slideData, forKey: .slideData)
         try c.put(buttonKinds, d.buttonKinds, .buttonKinds)
+        try c.put(minimalRing, d.minimalRing, .minimalRing)
+        try c.put(clockMode, d.clockMode, .clockMode)
+        try c.put(lockAlign, d.lockAlign, .lockAlign)
+        try c.put(graphKind, d.graphKind, .graphKind)
+        try c.put(spark, d.spark, .spark)
+        try c.put(reactions, d.reactions, .reactions)
+        try c.put(nextEventTitle, d.nextEventTitle, .nextEventTitle)
+        if !nextEventTitle.isEmpty { try c.encode(nextEventStart, forKey: .nextEventStart) }
+        try c.put(netType, d.netType, .netType)
+        try c.put(lowPower, d.lowPower, .lowPower)
+        try c.encodeIfPresent(uv, forKey: .uv)
+        try c.encodeIfPresent(rainChance, forKey: .rainChance)
+        try c.encodeIfPresent(wind, forKey: .wind)
+        try c.encodeIfPresent(aqi, forKey: .aqi)
+        try c.put(storageGB, d.storageGB, .storageGB)
+        try c.put(volume, d.volume, .volume)
+        try c.put(brightnessPct, d.brightnessPct, .brightnessPct)
+        try c.put(stepsGoal, d.stepsGoal, .stepsGoal)
+        try c.put(streak, d.streak, .streak)
     }
 
     func uses(_ content: SlotContent) -> Bool {
@@ -760,6 +919,7 @@ extension IslandState {
         if encodedSize > limit { musicArt = nil }
         if encodedSize > limit { slideData = nil }
         if encodedSize > limit { imageData = nil }
+        if encodedSize > limit { spark = [] }
         if encodedSize > limit {
             musicTitle = String(musicTitle.prefix(20))
             musicArtist = ""
@@ -772,12 +932,16 @@ extension IslandState {
     /// Lock Screen title: pop-out banner first, then its own text or the long-press text.
     var lockTitleText: String {
         if !bannerText.isEmpty { return bannerText }
-        return lockOwnText ? lockTitle : expandedTitle
+        return TextVars.resolve(lockOwnText ? lockTitle : expandedTitle, state: self)
     }
 
     var lockSubtitleText: String {
-        lockOwnText ? lockSubtitle : expandedSubtitle
+        TextVars.resolve(lockOwnText ? lockSubtitle : expandedSubtitle, state: self)
     }
+
+    var expandedTitleText: String { TextVars.resolve(expandedTitle, state: self) }
+
+    var expandedSubtitleText: String { TextVars.resolve(expandedSubtitle, state: self) }
 
     /// Accent color without its alpha, for badges, bars and buttons.
     var accentColor: Color { Color(hex: String(keylineHex.prefix(6))) }
@@ -822,6 +986,7 @@ extension IslandState {
         case .glass: return Color.black.opacity(0.28)
         case .gradient: return accentColor.darker(0.3)
         case .custom: return Color(hex: lockBgHex)
+        case .aurora: return accentColor.darker(0.3)
         }
     }
 
@@ -881,6 +1046,10 @@ extension IslandState {
         s.lockBarStyle = lockBarStyle
         s.badgeStyle = badgeStyle
         s.chipKinds = chipKinds
+        s.minimalRing = minimalRing
+        s.clockMode = clockMode
+        s.lockAlign = lockAlign
+        s.graphKind = graphKind
         // Fixed placeholder dates, so two copies of the same style compare equal.
         s.cycleStart = IslandState.epoch
         s.cycleEnd = IslandState.epoch
@@ -890,6 +1059,7 @@ extension IslandState {
         s.pomoStart = IslandState.epoch
         s.pomoEnd = IslandState.epoch
         s.daysSince = IslandState.epoch
+        s.nextEventStart = IslandState.epoch
         return s
     }
 
@@ -939,6 +1109,11 @@ enum Marquee {
         let loop = chars + Array("   •   ")
         let start = ((frame % loop.count) + loop.count) % loop.count
         return String((0..<width).map { loop[(start + $0) % loop.count] })
+    }
+
+    /// The last `width` letters, for text that types itself out.
+    static func tail(_ text: String, width: Int) -> String {
+        text.count <= width ? text : String(text.suffix(width))
     }
 }
 

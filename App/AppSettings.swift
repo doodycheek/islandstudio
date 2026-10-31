@@ -1,4 +1,5 @@
 import Foundation
+import UIKit
 
 /// App-level settings that aren't part of a visual style (so presets don't overwrite them).
 struct AppSettings: Codable, Hashable {
@@ -60,6 +61,43 @@ struct AppSettings: Codable, Hashable {
     var slideshowPhotos: [Data] = []
     var slideSeconds = 3.0
 
+    // Preset order and protection
+    var presetOrder: [String] = []
+    var newPresetsFirst = true
+    var lockedIDs: [String] = []
+
+    // My colors
+    var savedColors: [String] = []
+
+    // Quick status
+    var statuses: [StatusItem] = StatusItem.defaults
+    var activeStatus: StatusItem? = nil
+    var statusExpires: Date? = nil
+    var statusHours = 0
+
+    // Quiet hours, recap, goals
+    var quietEnabled = false
+    var quietStartMinute = 22 * 60
+    var quietEndMinute = 7 * 60
+    var quietPresetID = ""
+    var recapEnabled = false
+    var recapMinute = 21 * 60
+    var lastRecapDay = ""
+    var stepsGoal = 10_000
+    var streak = 0
+    var focusRoundsToday = 0
+
+    // App
+    var haptics = true
+    var showReactions = false
+    var reactionEmojis: [String] = ["❤️", "🔥", "😂", "👍"]
+    var autoSave = true
+    var autoStart = true
+    var stayInBubble = false
+    var bubbleSeconds = 30.0
+    var bubbleHours = 2
+    var bubbleUntil: Date? = nil
+
     enum CodingKeys: String, CodingKey {
         case countdownTarget, useFahrenheit, latitude, longitude, chargingMode, chargingTakeover
         case hourlyPopOut, chimeSound, showIslandButtons, currentPresetID, schedule, musicMode
@@ -70,6 +108,11 @@ struct AppSettings: Codable, Hashable {
         case daysSince, cryptoCoin, worldTZ, messagesText, messageSeconds
         case defaultPresetID, favoriteIDs, rulesEnabled, rules, shuffleEnabled, shuffleMinutes, shuffleSource
         case expandedButtons, slideshowPhotos, slideSeconds
+        case presetOrder, newPresetsFirst, lockedIDs, savedColors
+        case statuses, activeStatus, statusExpires, statusHours
+        case quietEnabled, quietStartMinute, quietEndMinute, quietPresetID
+        case recapEnabled, recapMinute, lastRecapDay, stepsGoal, streak, focusRoundsToday
+        case haptics, showReactions, reactionEmojis, autoSave, autoStart, stayInBubble, bubbleSeconds, bubbleHours, bubbleUntil
     }
 }
 
@@ -124,6 +167,33 @@ extension AppSettings {
         expandedButtons = c.value(.expandedButtons, default: expandedButtons)
         slideshowPhotos = c.value(.slideshowPhotos, default: slideshowPhotos)
         slideSeconds = c.value(.slideSeconds, default: slideSeconds)
+        presetOrder = c.value(.presetOrder, default: presetOrder)
+        newPresetsFirst = c.value(.newPresetsFirst, default: newPresetsFirst)
+        lockedIDs = c.value(.lockedIDs, default: lockedIDs)
+        savedColors = c.value(.savedColors, default: savedColors)
+        statuses = c.value(.statuses, default: statuses)
+        activeStatus = c.optional(.activeStatus)
+        statusExpires = c.optional(.statusExpires)
+        statusHours = c.value(.statusHours, default: statusHours)
+        quietEnabled = c.value(.quietEnabled, default: quietEnabled)
+        quietStartMinute = c.value(.quietStartMinute, default: quietStartMinute)
+        quietEndMinute = c.value(.quietEndMinute, default: quietEndMinute)
+        quietPresetID = c.value(.quietPresetID, default: quietPresetID)
+        recapEnabled = c.value(.recapEnabled, default: recapEnabled)
+        recapMinute = c.value(.recapMinute, default: recapMinute)
+        lastRecapDay = c.value(.lastRecapDay, default: lastRecapDay)
+        stepsGoal = c.value(.stepsGoal, default: stepsGoal)
+        streak = c.value(.streak, default: streak)
+        focusRoundsToday = c.value(.focusRoundsToday, default: focusRoundsToday)
+        haptics = c.value(.haptics, default: haptics)
+        showReactions = c.value(.showReactions, default: showReactions)
+        reactionEmojis = c.value(.reactionEmojis, default: reactionEmojis)
+        autoSave = c.value(.autoSave, default: autoSave)
+        autoStart = c.value(.autoStart, default: autoStart)
+        stayInBubble = c.value(.stayInBubble, default: stayInBubble)
+        bubbleSeconds = c.value(.bubbleSeconds, default: bubbleSeconds)
+        bubbleHours = c.value(.bubbleHours, default: bubbleHours)
+        bubbleUntil = c.optional(.bubbleUntil)
     }
 }
 
@@ -185,6 +255,7 @@ struct IslandRule: Codable, Hashable, Identifiable {
 
 enum RuleKind: String, Codable, CaseIterable, Identifiable, Hashable {
     case batteryBelow, charging, music, headphones, rain, snow, hot, cold, timeRange, weekend
+    case inMeeting, lowPowerMode, stepsGoal, cellular, focusActive
 
     var id: String { rawValue }
 
@@ -200,6 +271,11 @@ enum RuleKind: String, Codable, CaseIterable, Identifiable, Hashable {
         case .cold: return "It's cold"
         case .timeRange: return "Time of day"
         case .weekend: return "Weekend"
+        case .inMeeting: return "I'm in a meeting"
+        case .lowPowerMode: return "Low Power Mode is on"
+        case .stepsGoal: return "I hit my step goal"
+        case .cellular: return "I'm on cellular"
+        case .focusActive: return "Focus timer is running"
         }
     }
 
@@ -215,6 +291,11 @@ enum RuleKind: String, Codable, CaseIterable, Identifiable, Hashable {
         case .cold: return "thermometer.snowflake"
         case .timeRange: return "clock.fill"
         case .weekend: return "calendar"
+        case .inMeeting: return "person.2.fill"
+        case .lowPowerMode: return "battery.25"
+        case .stepsGoal: return "figure.walk"
+        case .cellular: return "antenna.radiowaves.left.and.right"
+        case .focusActive: return "timer"
         }
     }
 
@@ -239,5 +320,38 @@ enum RuleKind: String, Codable, CaseIterable, Identifiable, Hashable {
 
     var numberUnit: String {
         self == .batteryBelow ? "%" : "°"
+    }
+}
+
+/// A quick status like "Studying 📚" you can put on your island with one tap.
+struct StatusItem: Codable, Hashable, Identifiable {
+    var id = UUID().uuidString
+    var emoji = "🙂"
+    var text = ""
+    var hex = "00E5FFFF"
+
+    static let defaults: [StatusItem] = [
+        StatusItem(id: "studying", emoji: "📚", text: "Studying", hex: "5E5CE6FF"),
+        StatusItem(id: "gaming", emoji: "🎮", text: "Gaming", hex: "FF2D92FF"),
+        StatusItem(id: "busy", emoji: "🔴", text: "Busy", hex: "FF3B30FF"),
+        StatusItem(id: "driving", emoji: "🚗", text: "Driving", hex: "FF9500FF"),
+        StatusItem(id: "working", emoji: "💼", text: "Working", hex: "0A84FFFF"),
+        StatusItem(id: "eating", emoji: "🍕", text: "Eating", hex: "FFCC00FF"),
+        StatusItem(id: "sleeping", emoji: "😴", text: "Sleeping", hex: "5856D6FF"),
+        StatusItem(id: "chilling", emoji: "🌴", text: "Chilling", hex: "30D158FF")
+    ]
+}
+
+/// Light tap feedback, if you have it switched on.
+@MainActor
+enum Haptics {
+    static func tap() {
+        guard UserDefaults.standard.object(forKey: "hapticsOn") as? Bool ?? true else { return }
+        UIImpactFeedbackGenerator(style: .light).impactOccurred()
+    }
+
+    static func success() {
+        guard UserDefaults.standard.object(forKey: "hapticsOn") as? Bool ?? true else { return }
+        UINotificationFeedbackGenerator().notificationOccurred(.success)
     }
 }

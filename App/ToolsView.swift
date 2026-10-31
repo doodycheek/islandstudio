@@ -59,6 +59,12 @@ struct ToolsView: View {
             RowDivider()
             Stepper("Goal: \(goalText)", value: $manager.settings.counterGoal, in: 0...50)
             RowDivider()
+            HStack {
+                Text("Goal streak")
+                Spacer()
+                Text("\(manager.settings.streak) days 🔥").foregroundStyle(.secondary)
+            }
+            RowDivider()
             ToggleRow(title: "Reset every day", icon: "sunrise.fill", color: .orange,
                       isOn: $manager.settings.counterResetsDaily)
             RowDivider()

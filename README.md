@@ -2,6 +2,30 @@
 
 Customizes the Dynamic Island with a Live Activity, plus a background keep-alive so animations keep running.
 
+## v1.6.4
+- Small bubble mode turns itself off after a set time, has a card in Studio, and a Shortcuts action to switch it on automatically
+
+## v1.6.3
+- Stay in the small bubble: update rarely and skip pop-outs so another app's Live Activity (like Uber Eats) keeps the big spot
+
+## v1.6.2
+- Your setup now survives re-signing: auto-saved to the Keychain and brought back on a fresh install
+- Save to Files / Restore from file, and the island starts by itself when the app opens
+
+## v1.6.1
+- Outline ring on the minimal bubble (iOS only draws its own outline on the compact island), in your accent color, with a switch in Text & glow
+
+## v1.6
+- Exact battery percent (every digit) with an automatic fallback, plus a health check screen
+- Always-On Display fix: bright simple layout with plain digits instead of "6 hours, ..."
+- 12-hour / 24-hour clock format for every clock, including the live seconds clock
+- Presets: drag to reorder, move to front, lock, new ones land at the front
+- Friendly icon names + searchable icon browser, hex colors, My colors, color harmony
+- Undo / redo / hold-to-compare, quick status, text variables, badges, text effects
+- New slots: next event, network, low power, UV, rain chance, wind, air quality, storage, volume, brightness, steps ring, day / year progress, streak, breathing guide, typewriter
+- Lock screen: Big clock layout, Aurora background, mini graphs, reorderable chips, emoji reactions
+- Quiet hours, daily recap, goal streaks, more rule types, more widgets
+
 ## v1.5
 - Default preset, Save as new / Update / Duplicate / Favorites / Surprise me
 - Colors: accent synced to time of day, battery, weather or album art; slots that follow the accent; palettes; colors from a photo; app theme can match the island

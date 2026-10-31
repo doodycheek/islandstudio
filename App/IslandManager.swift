@@ -21,7 +21,9 @@ final class IslandManager: ObservableObject {
 
     @Published var config: IslandState {
         didSet {
+            recordUndo(previous: oldValue)
             saveConfig()
+            scheduleAutoSave()
             configChanged()
         }
     }
@@ -46,7 +48,9 @@ final class IslandManager: ObservableObject {
                 info.cryptoPrice = nil
                 info.cryptoChange = nil
             }
+            UserDefaults.standard.set(settings.haptics, forKey: "hapticsOn")
             saveSettings()
+            scheduleAutoSave()
             configChanged()
         }
     }
@@ -69,7 +73,10 @@ final class IslandManager: ObservableObject {
     }
 
     @Published var savedPresets: [SavedPreset] {
-        didSet { PresetStore.saveCustom(savedPresets) }
+        didSet {
+            PresetStore.saveCustom(savedPresets)
+            scheduleAutoSave()
+        }
     }
 
     @Published var paused = false {
@@ -130,6 +137,34 @@ final class IslandManager: ObservableObject {
     private var lastShuffle: Date?
     private var albumAccentHex: String?
     private var lastHolidayPresetID = ""
+    private let networkWatcher = NetworkWatcher()
+    private let calendarWatcher = CalendarWatcher()
+    private var lastCalendarFetch: Date?
+    private var lastExtrasFetch: Date?
+    private var lastAQIFetch: Date?
+    private var lastStorageFetch: Date?
+    private var lastHistorySample: Date?
+    private var extrasInFlight = false
+    private var aqiInFlight = false
+    private var batteryHistory: [Int] = []
+    private var stepsHistory: [Int] = []
+    private var historyDay = ""
+    private var undoStack: [IslandState] = []
+    private var redoStack: [IslandState] = []
+    private var lastUndoPush = Date.distantPast
+    private var applyingHistory = false
+    private var baseline = IslandState()
+    @Published private(set) var canUndo = false
+    @Published private(set) var canRedo = false
+    /// While true, the preview shows how your style looked before you started editing.
+    @Published var comparing = false
+    /// When your setup was last copied to the Keychain, and whether that worked.
+    @Published private(set) var lastAutoSave: Date?
+    @Published private(set) var autoSaveOK: Bool?
+    /// True when this launch brought your setup back from the Keychain after a fresh install.
+    @Published private(set) var restoredFromKeychain = false
+    private var autoSaveTask: Task<Void, Never>?
+    private var stoppedByUser = false
 
     private let musicWatcher = MusicWatcher()
     private let stepsWatcher = StepsWatcher()
@@ -156,9 +191,12 @@ final class IslandManager: ObservableObject {
 
     private init() {
         let d = UserDefaults.standard
-        config = Self.load(IslandState.self, key: Keys.config) ?? IslandState()
-        settings = Self.load(AppSettings.self, key: Keys.settings) ?? AppSettings()
-        savedPresets = PresetStore.loadCustom()
+        // A fresh install has no saved data. If the Keychain still has your setup, bring it back.
+        let fresh = d.data(forKey: Keys.config) == nil && d.data(forKey: Keys.settings) == nil
+        let restored: BackupData? = fresh ? KeychainBackup.loadBackup() : nil
+        config = restored?.config ?? Self.load(IslandState.self, key: Keys.config) ?? IslandState()
+        settings = restored?.settings ?? Self.load(AppSettings.self, key: Keys.settings) ?? AppSettings()
+        savedPresets = restored?.presets ?? PresetStore.loadCustom()
         keepAlive = d.object(forKey: Keys.keepAlive) as? Bool ?? true
         let fi = d.double(forKey: Keys.frameInterval)
         frameInterval = fi > 0 ? fi : 1.0
@@ -167,6 +205,17 @@ final class IslandManager: ObservableObject {
         lastScheduleKey = d.string(forKey: Keys.scheduleKey) ?? ""
         lastHolidayKey = d.string(forKey: Keys.holidayKey) ?? ""
         lastHolidayPresetID = d.string(forKey: Keys.holidayPresetKey) ?? ""
+        batteryHistory = d.array(forKey: "batteryHistory") as? [Int] ?? []
+        stepsHistory = d.array(forKey: "stepsHistory") as? [Int] ?? []
+        historyDay = d.string(forKey: "historyDay") ?? ""
+        d.set(settings.haptics, forKey: "hapticsOn")
+        baseline = config
+        if restored != nil {
+            saveConfig()
+            saveSettings()
+            PresetStore.saveCustom(savedPresets)
+            restoredFromKeychain = true
+        }
         UIDevice.current.isBatteryMonitoringEnabled = true
         wasCharging = batteryInfo().charging
         reattach()
@@ -208,6 +257,7 @@ final class IslandManager: ObservableObject {
             waitingForForeground = false
             lastPush = Date()
             UserDefaults.standard.set(true, forKey: Keys.wantsRunning)
+            stoppedByUser = false
             status = "Island is live. Swipe home to see it."
             applyKeepAlive()
         } catch {
@@ -220,12 +270,14 @@ final class IslandManager: ObservableObject {
         isRunning = false
         isHiddenForMusic = false
         UserDefaults.standard.set(false, forKey: Keys.wantsRunning)
+        stoppedByUser = true
         applyKeepAlive()
         status = "Island stopped"
     }
 
     func appBecameActive() {
-        guard UserDefaults.standard.bool(forKey: Keys.wantsRunning), !isHiddenForMusic else { return }
+        let shouldRun = UserDefaults.standard.bool(forKey: Keys.wantsRunning) || (settings.autoStart && !stoppedByUser)
+        guard shouldRun, !isHiddenForMusic else { return }
         let alive = activity.map { $0.activityState == .active } ?? false
         if !alive || waitingForForeground {
             Task { await start() }
@@ -239,6 +291,8 @@ final class IslandManager: ObservableObject {
         if s.imageData == nil { s.imageData = config.imageData }
         settings.currentPresetID = preset.id
         config = s
+        baseline = s
+        Haptics.tap()
     }
 
     func applyPreset(id: String) {
@@ -246,7 +300,7 @@ final class IslandManager: ObservableObject {
     }
 
     func stepPreset(by delta: Int) {
-        let all = PresetStore.builtIns + savedPresets
+        let all = allPresets
         guard !all.isEmpty else { return }
         let next: Int
         if let index = all.firstIndex(where: { $0.id == settings.currentPresetID }) {
@@ -264,26 +318,45 @@ final class IslandManager: ObservableObject {
                                  icon: "star.square.fill",
                                  style: config.styleOnly())
         savedPresets.append(preset)
+        placeNewPreset(preset.id)
         settings.currentPresetID = preset.id
+        baseline = config
+        Haptics.success()
         status = "Saved \(preset.name)"
     }
 
     func renamePreset(id: String, to name: String) {
         let trimmed = name.trimmingCharacters(in: .whitespacesAndNewlines)
+        guard !isLocked(id) else { status = "Unlock it first to rename it"; return }
         guard !trimmed.isEmpty, let i = savedPresets.firstIndex(where: { $0.id == id }) else { return }
         savedPresets[i].name = trimmed
     }
 
     func deletePreset(id: String) {
+        guard !isLocked(id) else { status = "Unlock it first to delete it"; return }
         savedPresets.removeAll { $0.id == id }
         var s = settings
         if s.defaultPresetID == id { s.defaultPresetID = "neon" }
         s.favoriteIDs.removeAll { $0 == id }
+        s.presetOrder.removeAll { $0 == id }
+        s.lockedIDs.removeAll { $0 == id }
         settings = s
     }
 
     /// Every preset, built-in first.
-    var allPresets: [SavedPreset] { PresetStore.builtIns + savedPresets }
+    /// Every preset in the order you arranged them. Until you arrange them, yours come first (newest on top).
+    var allPresets: [SavedPreset] {
+        let base = PresetStore.builtIns + savedPresets
+        let order = settings.presetOrder
+        if order.isEmpty {
+            return settings.newPresetsFirst ? Array(savedPresets.reversed()) + PresetStore.builtIns : base
+        }
+        var rank: [String: Int] = [:]
+        for (index, id) in order.enumerated() where rank[id] == nil { rank[id] = index }
+        let listed = base.filter { rank[$0.id] != nil }.sorted { (rank[$0.id] ?? 0) < (rank[$1.id] ?? 0) }
+        let rest = base.filter { rank[$0.id] == nil }
+        return listed + rest
+    }
 
     private func findPreset(_ id: String) -> SavedPreset? {
         allPresets.first { $0.id == id }
@@ -320,6 +393,7 @@ final class IslandManager: ObservableObject {
     }
 
     func updatePreset(id: String) {
+        guard !isLocked(id) else { status = "That preset is locked. Unlock it to change it."; return }
         guard let index = savedPresets.firstIndex(where: { $0.id == id }) else { return }
         savedPresets[index].style = config.styleOnly()
         status = "Updated \(savedPresets[index].name)"
@@ -329,6 +403,7 @@ final class IslandManager: ObservableObject {
         let copy = SavedPreset(id: UUID().uuidString, name: "\(preset.name) copy", icon: "star.square.fill",
                                style: preset.style.styleOnly())
         savedPresets.append(copy)
+        placeNewPreset(copy.id)
         status = "Duplicated \(preset.name)"
     }
 
@@ -384,6 +459,7 @@ final class IslandManager: ObservableObject {
             return
         }
         savedPresets.append(preset)
+        placeNewPreset(preset.id)
         status = "Added \(preset.name)"
     }
 
@@ -445,6 +521,8 @@ final class IslandManager: ObservableObject {
             MusicWatcher.previous()
         case .surprise:
             surprise()
+        case .react(let emoji):
+            await popOutNow(emoji)
         }
         await pushUpdate()
     }
@@ -529,7 +607,7 @@ final class IslandManager: ObservableObject {
         let length = max(1, cycleLength)
         let start = Date(timeIntervalSince1970: floor(date.timeIntervalSince1970 / length) * length)
         let previewFrame = paused ? frame : Int(date.timeIntervalSince1970 / step)
-        return compose(base: config, now: date, frame: previewFrame, cycleStart: start, cycleLength: length,
+        return compose(base: comparing ? baseline : config, now: date, frame: previewFrame, cycleStart: start, cycleLength: length,
                        sessionStart: isRunning ? activityStart : date, budget: false, live: false, forceMusic: music)
     }
 
@@ -557,10 +635,10 @@ final class IslandManager: ObservableObject {
         }
     }
 
+    /// Uses the exact reader (every percent) and falls back to iOS's 5% steps.
     private func batteryInfo() -> (level: Int, charging: Bool) {
-        let level = UIDevice.current.batteryLevel
-        let st = UIDevice.current.batteryState
-        return (level < 0 ? -1 : Int((level * 100).rounded()), st == .charging || st == .full)
+        let reading = BatteryReader.read()
+        return (reading.level, reading.charging)
     }
 
     private func compose(base: IslandState, now: Date, frame: Int, cycleStart: Date, cycleLength: Double,
@@ -606,6 +684,18 @@ final class IslandManager: ObservableObject {
         } else if live && settings.chargingTakeover && battery.charging {
             s.applyChargingStyle()
         }
+        // A quick status you picked (real island only).
+        if live, let item = settings.activeStatus {
+            s.accentSync = .fixed
+            s.left = SlotConfig(content: .emoji, text: item.emoji)
+            s.right = item.text.count <= 9
+                ? SlotConfig(content: .text, text: item.text, colorHex: item.hex)
+                : SlotConfig(content: .marquee, text: item.text, colorHex: item.hex)
+            s.minimal = SlotConfig(content: .emoji, text: item.emoji)
+            s.expandedTitle = item.text
+            s.expandedSubtitle = ""
+            s.keylineHex = item.hex
+        }
         // Accent sync: let the accent come from time, battery, weather or album art.
         switch s.accentSync {
         case .fixed:
@@ -635,6 +725,31 @@ final class IslandManager: ObservableObject {
         for path in slotPaths where s[keyPath: path].useAccent {
             s[keyPath: path].colorHex = s.keylineHex
         }
+
+        // Extra live values, only shipped when a slot or chip shows them (keeps the island's data small)
+        let chipSet: Set<String> = (s.lockChips || s.expandedChips) ? Set(s.chipKinds) : Set<String>()
+        func chipOn(_ kind: ChipKind) -> Bool { chipSet.contains(kind.rawValue) }
+        if s.uses(.nextEvent) || chipOn(.nextEvent) {
+            s.nextEventTitle = String(info.nextEventTitle.prefix(20))
+            s.nextEventStart = info.nextEventStart
+        }
+        s.netType = (s.uses(.network) || chipOn(.network)) ? networkWatcher.type : ""
+        s.lowPower = s.uses(.lowPower) ? SystemReader.lowPower : false
+        if s.uses(.uv) || chipOn(.uv) { s.uv = info.uv }
+        if s.uses(.rainChance) || chipOn(.rain) { s.rainChance = info.rainChance }
+        if s.uses(.wind) || chipOn(.wind) { s.wind = info.wind }
+        if s.uses(.airQuality) || chipOn(.aqi) { s.aqi = info.aqi }
+        if s.uses(.storage) || chipOn(.storage) { s.storageGB = info.storageGB }
+        if s.uses(.volume) { s.volume = SystemReader.volumePercent }
+        if s.uses(.brightness) { s.brightnessPct = SystemReader.brightnessPercent }
+        s.stepsGoal = settings.stepsGoal
+        let reachedToday = settings.counterGoal > 0 && settings.counter >= settings.counterGoal
+        s.streak = settings.streak + (reachedToday ? 1 : 0)
+        if !s.graphKind.isEmpty {
+            let source = s.graphKind == "steps" ? stepsHistory : batteryHistory
+            s.spark = Array(source.suffix(24))
+        }
+        s.reactions = settings.showReactions ? Array(settings.reactionEmojis.filter { !$0.isEmpty }.prefix(5)) : []
 
         // Tools
         s.counter = settings.counter
@@ -714,12 +829,17 @@ final class IslandManager: ObservableObject {
     private func tick() async {
         let now = Date()
         refreshInfo(now: now)
+        refreshExtraInfo(now: now)
         updateMusicDetection(now: now)
         checkSchedule(now: now)
         checkHoliday(now: now)
         dailyCounterReset(now: now)
         checkPomodoro(now: now)
         checkLowBattery()
+        updateHistory(now: now)
+        checkStatusExpiry(now: now)
+        checkBubbleExpiry(now: now)
+        checkRecap(now: now)
         evaluateTakeover(now: now)
         await syncMusicHide()
 
@@ -737,28 +857,38 @@ final class IslandManager: ObservableObject {
         }
 
         var alert: AlertConfiguration?
+        let quiet = quietActive(now)
         let battery = batteryInfo()
-        if battery.charging && !wasCharging && settings.chargingMode {
+        if battery.charging && !wasCharging && settings.chargingMode && !quiet {
             let text = battery.level >= 0 ? "Charging · \(battery.level)%" : "Charging"
             setBanner(text, now: now)
             alert = makeAlert(text)
         }
         wasCharging = battery.charging
 
-        if settings.hourlyPopOut, let chime = hourlyChimeText(now) {
+        if settings.hourlyPopOut, !quiet, let chime = hourlyChimeText(now) {
             setBanner(chime, now: now)
             alert = makeAlert(chime)
         }
 
         if let text = pendingBanner {
             pendingBanner = nil
-            setBanner(text, now: now)
-            alert = makeAlert(text)
+            if !quiet {
+                setBanner(text, now: now)
+                alert = makeAlert(text)
+            }
         }
 
         if let until = bannerUntil, now > until {
             bannerText = ""
             bannerUntil = nil
+        }
+
+        // "Stay in the small bubble": update rarely and never pop out, so another app's Live Activity
+        // (like Uber Eats) keeps the big spot and yours sits in the minimal bubble.
+        if settings.stayInBubble {
+            alert = nil
+            if now.timeIntervalSince(lastPush) < max(10, settings.bubbleSeconds) { return }
         }
 
         // While paused, only refresh occasionally to save battery.
@@ -786,7 +916,9 @@ final class IslandManager: ObservableObject {
         }
 
         // Lock Screen chips use steps/weather only if they're already set up (no surprise permission prompts).
-        let wantsSteps = config.uses(.steps)
+        let rulesNeedSteps = settings.rulesEnabled && settings.rules.contains { $0.enabled && $0.kind == .stepsGoal }
+        let wantsSteps = config.uses(.steps) || config.uses(.stepsRing) || config.graphKind == "steps"
+            || settings.recapEnabled || rulesNeedSteps
             || (config.lockChips && CMPedometer.authorizationStatus() == .authorized)
         if wantsSteps, !stepsInFlight,
            lastStepsFetch.map({ now.timeIntervalSince($0) > 30 }) ?? true {
@@ -922,6 +1054,16 @@ final class IslandManager: ObservableObject {
                 }
             case .weekend:
                 matches = cal.isDateInWeekend(now)
+            case .inMeeting:
+                matches = info.nextEventInProgress && !info.nextEventTitle.isEmpty
+            case .lowPowerMode:
+                matches = SystemReader.lowPower
+            case .stepsGoal:
+                matches = info.steps >= 0 && info.steps >= settings.stepsGoal
+            case .cellular:
+                matches = networkWatcher.type == "cell"
+            case .focusActive:
+                matches = !settings.pomoPhase.isEmpty
             }
             if matches { return rule }
         }
@@ -950,6 +1092,9 @@ final class IslandManager: ObservableObject {
         if let rule = matchingRule(now: now), let preset = findPreset(rule.presetID) {
             style = preset.style
             label = "\(rule.kind.label) → \(preset.name)"
+        } else if quietActive(now), !settings.quietPresetID.isEmpty, let preset = findPreset(settings.quietPresetID) {
+            style = preset.style
+            label = "Quiet hours → \(preset.name)"
         } else if settings.shuffleEnabled {
             let due = lastShuffle.map { now.timeIntervalSince($0) >= Double(max(1, settings.shuffleMinutes)) * 60 } ?? true
             if due || shuffleStyle == nil { pickShuffle(now: now) }
@@ -1036,6 +1181,7 @@ final class IslandManager: ObservableObject {
     private func checkPomodoro(now: Date) {
         guard !settings.pomoPhase.isEmpty, now >= settings.pomoEnd else { return }
         if settings.pomoPhase == "focus" {
+            settings.focusRoundsToday += 1
             startPhase("break", minutes: settings.breakMinutes, now: now)
             queueBanner("Break time ☕")
         } else {
@@ -1049,7 +1195,11 @@ final class IslandManager: ObservableObject {
         let day = Self.dayFormatter.string(from: now)
         guard settings.counterDay != day else { return }
         var s = settings
-        if !s.counterDay.isEmpty { s.counter = 0 }
+        if !s.counterDay.isEmpty {
+            if s.counterGoal > 0 { s.streak = s.counter >= s.counterGoal ? s.streak + 1 : 0 }
+            s.counter = 0
+            s.focusRoundsToday = 0
+        }
         s.counterDay = day
         settings = s
     }
@@ -1223,5 +1373,346 @@ final class IslandManager: ObservableObject {
         if let data = try? JSONEncoder().encode(settings) {
             UserDefaults.standard.set(data, forKey: Keys.settings)
         }
+    }
+}
+
+// MARK: - Presets: order and locking
+
+extension IslandManager {
+    /// Puts a brand new preset at the front (or the back, if you prefer).
+    func placeNewPreset(_ id: String) {
+        var ids = allPresets.map { $0.id }
+        ids.removeAll { $0 == id }
+        if settings.newPresetsFirst {
+            ids.insert(id, at: 0)
+        } else {
+            ids.append(id)
+        }
+        settings.presetOrder = ids
+    }
+
+    func movePresets(from source: IndexSet, to destination: Int) {
+        var ids = allPresets.map { $0.id }
+        ids.move(fromOffsets: source, toOffset: destination)
+        settings.presetOrder = ids
+        Haptics.tap()
+    }
+
+    func moveToFront(_ id: String) {
+        var ids = allPresets.map { $0.id }
+        ids.removeAll { $0 == id }
+        ids.insert(id, at: 0)
+        settings.presetOrder = ids
+        Haptics.tap()
+        status = "Moved to the front"
+    }
+
+    func resetPresetOrder() {
+        settings.presetOrder = []
+        status = "Order reset"
+    }
+
+    func isLocked(_ id: String) -> Bool { settings.lockedIDs.contains(id) }
+
+    func toggleLock(_ id: String) {
+        if let index = settings.lockedIDs.firstIndex(of: id) {
+            settings.lockedIDs.remove(at: index)
+            status = "Unlocked"
+        } else {
+            settings.lockedIDs.append(id)
+            status = "Locked. It can't be changed by accident."
+        }
+        Haptics.tap()
+    }
+}
+
+// MARK: - Undo, redo, compare
+
+extension IslandManager {
+    /// Slider drags make dozens of tiny changes, so only the state from before each burst is kept.
+    func recordUndo(previous: IslandState) {
+        guard !applyingHistory, previous != config else { return }
+        let now = Date()
+        if now.timeIntervalSince(lastUndoPush) > 0.8 {
+            undoStack.append(previous)
+            if undoStack.count > 60 { undoStack.removeFirst() }
+        }
+        lastUndoPush = now
+        redoStack.removeAll()
+        updateUndoFlags()
+    }
+
+    func updateUndoFlags() {
+        canUndo = !undoStack.isEmpty
+        canRedo = !redoStack.isEmpty
+    }
+
+    func undo() {
+        guard let previous = undoStack.popLast() else { return }
+        applyingHistory = true
+        redoStack.append(config)
+        config = previous
+        applyingHistory = false
+        updateUndoFlags()
+        status = "Undid your last change"
+        Haptics.tap()
+    }
+
+    func redo() {
+        guard let next = redoStack.popLast() else { return }
+        applyingHistory = true
+        undoStack.append(config)
+        config = next
+        applyingHistory = false
+        updateUndoFlags()
+        status = "Redid that change"
+        Haptics.tap()
+    }
+}
+
+// MARK: - Status, pop-outs, quiet hours, recap, history
+
+extension IslandManager {
+    func setStatus(_ item: StatusItem?) {
+        var s = settings
+        s.activeStatus = item
+        if item != nil && s.statusHours > 0 {
+            s.statusExpires = Date().addingTimeInterval(Double(s.statusHours) * 3600)
+        } else {
+            s.statusExpires = nil
+        }
+        settings = s
+        Haptics.tap()
+        status = item == nil ? "Status cleared" : "Status set: \(item?.text ?? "")"
+    }
+
+    /// Used by the Shortcuts action: put any text on the island.
+    func setStatusText(emoji: String, text: String) {
+        let cleanEmoji = emoji.trimmingCharacters(in: .whitespacesAndNewlines)
+        let item = StatusItem(id: "shortcut", emoji: cleanEmoji.isEmpty ? "💬" : cleanEmoji,
+                              text: String(text.prefix(30)), hex: config.keylineHex)
+        setStatus(item)
+    }
+
+    func checkStatusExpiry(now: Date) {
+        if let end = settings.statusExpires, now >= end { setStatus(nil) }
+    }
+
+    /// Pops text out of the island right away (used for emoji reactions).
+    func popOutNow(_ text: String) async {
+        guard isRunning, !isHiddenForMusic, let current = activity, current.activityState == .active else { return }
+        let now = Date()
+        setBanner(text, now: now)
+        await current.update(ActivityContent(state: liveState(now: now), staleDate: nil),
+                             alertConfiguration: makeAlert(text))
+        lastPush = now
+    }
+
+    /// True during your quiet hours: no pop-outs, alerts or sounds.
+    func quietActive(_ now: Date) -> Bool {
+        guard settings.quietEnabled else { return false }
+        let c = Calendar.current.dateComponents([.hour, .minute], from: now)
+        let minute = (c.hour ?? 0) * 60 + (c.minute ?? 0)
+        let start = settings.quietStartMinute
+        let end = settings.quietEndMinute
+        return start <= end ? (minute >= start && minute < end) : (minute >= start || minute < end)
+    }
+
+    private func recapText() -> String {
+        var parts: [String] = []
+        if info.steps >= 0 { parts.append("\(info.steps.formatted()) steps") }
+        if settings.counterGoal > 0 { parts.append("\(settings.counter)/\(settings.counterGoal) goal") }
+        if settings.focusRoundsToday > 0 { parts.append("\(settings.focusRoundsToday) 🍅") }
+        if settings.streak > 0 { parts.append("🔥\(settings.streak)") }
+        return parts.isEmpty ? "Good evening 🌙" : "Today · " + parts.joined(separator: " · ")
+    }
+
+    func checkRecap(now: Date) {
+        guard settings.recapEnabled else { return }
+        let c = Calendar.current.dateComponents([.hour, .minute], from: now)
+        let minute = (c.hour ?? 0) * 60 + (c.minute ?? 0)
+        let day = Self.dayStamp(now)
+        guard minute >= settings.recapMinute, minute < settings.recapMinute + 30, settings.lastRecapDay != day else { return }
+        settings.lastRecapDay = day
+        queueBanner(recapText())
+    }
+
+    /// Saves a battery and steps reading every half hour for the mini graphs.
+    func updateHistory(now: Date) {
+        let interval: TimeInterval = (batteryHistory.count < 3) ? 120 : 1800
+        if let last = lastHistorySample, now.timeIntervalSince(last) < interval { return }
+        lastHistorySample = now
+        let day = Self.dayStamp(now)
+        if day != historyDay {
+            historyDay = day
+            stepsHistory = []
+            UserDefaults.standard.set(day, forKey: "historyDay")
+        }
+        let battery = batteryInfo()
+        if battery.level >= 0 { batteryHistory.append(battery.level) }
+        if info.steps >= 0 { stepsHistory.append(info.steps) }
+        batteryHistory = Array(batteryHistory.suffix(24))
+        stepsHistory = Array(stepsHistory.suffix(24))
+        UserDefaults.standard.set(batteryHistory, forKey: "batteryHistory")
+        UserDefaults.standard.set(stepsHistory, forKey: "stepsHistory")
+    }
+
+    private static func dayStamp(_ date: Date) -> String {
+        let f = DateFormatter()
+        f.dateFormat = "yyyy-MM-dd"
+        return f.string(from: date)
+    }
+
+    /// Calendar, extra weather, air quality and storage.
+    func refreshExtraInfo(now: Date) {
+        let appActive = UIApplication.shared.applicationState == .active
+        let chipSet: Set<String> = (config.lockChips || config.expandedChips) ? Set(config.chipKinds) : Set<String>()
+        func chipOn(_ kind: ChipKind) -> Bool { chipSet.contains(kind.rawValue) }
+
+        let rulesNeedCalendar = settings.rulesEnabled && settings.rules.contains { $0.enabled && $0.kind == .inMeeting }
+        if config.uses(.nextEvent) || chipOn(.nextEvent) || rulesNeedCalendar,
+           lastCalendarFetch.map({ now.timeIntervalSince($0) > 60 }) ?? true {
+            lastCalendarFetch = now
+            if calendarWatcher.needsPrompt {
+                if appActive {
+                    Task { _ = await self.calendarWatcher.requestAccess() }
+                }
+            } else if let next = calendarWatcher.upcoming(now: now) {
+                info.nextEventTitle = next.title
+                info.nextEventStart = next.start
+                info.nextEventInProgress = next.inProgress
+            } else if !info.nextEventTitle.isEmpty {
+                info.nextEventTitle = ""
+                info.nextEventInProgress = false
+            }
+        }
+
+        let wantsExtras = config.uses(.uv) || config.uses(.rainChance) || config.uses(.wind)
+            || chipOn(.uv) || chipOn(.rain) || chipOn(.wind)
+        if wantsExtras, !extrasInFlight, let lat = settings.latitude, let lon = settings.longitude,
+           lastExtrasFetch.map({ now.timeIntervalSince($0) > 900 }) ?? true {
+            extrasInFlight = true
+            lastExtrasFetch = now
+            let fahrenheit = settings.useFahrenheit
+            Task {
+                if let extras = await WeatherService.fetchExtras(lat: lat, lon: lon, fahrenheit: fahrenheit) {
+                    self.info.uv = extras.uv
+                    self.info.rainChance = extras.rainChance
+                    self.info.wind = extras.wind
+                }
+                self.extrasInFlight = false
+            }
+        }
+
+        if config.uses(.airQuality) || chipOn(.aqi), !aqiInFlight,
+           let lat = settings.latitude, let lon = settings.longitude,
+           lastAQIFetch.map({ now.timeIntervalSince($0) > 1800 }) ?? true {
+            aqiInFlight = true
+            lastAQIFetch = now
+            Task {
+                if let value = await AirQualityService.fetch(lat: lat, lon: lon) {
+                    self.info.aqi = value
+                }
+                self.aqiInFlight = false
+            }
+        }
+
+        if config.uses(.storage) || chipOn(.storage),
+           lastStorageFetch.map({ now.timeIntervalSince($0) > 60 }) ?? true {
+            lastStorageFetch = now
+            info.storageGB = SystemReader.freeStorageGB() ?? -1
+        }
+    }
+
+    /// For the health check screen.
+    var batteryIsExact: Bool { BatteryReader.isExact }
+    var batteryLevelNow: Int { BatteryReader.read().level }
+}
+
+// MARK: - Saving your setup so re-signing the app doesn't lose it
+
+extension IslandManager {
+    /// Everything that makes up your setup, as one file's worth of data.
+    func backupData(includeLocation: Bool) -> Data? {
+        var exported = settings
+        if !includeLocation {
+            exported.latitude = nil
+            exported.longitude = nil
+        }
+        let backup = BackupData(config: config.styleOnly(), settings: exported, presets: savedPresets)
+        return try? JSONEncoder().encode(backup)
+    }
+
+    /// Waits a few seconds after the last change, then copies your setup to the Keychain.
+    func scheduleAutoSave() {
+        guard settings.autoSave else { return }
+        autoSaveTask?.cancel()
+        autoSaveTask = Task { [weak self] in
+            try? await Task.sleep(nanoseconds: 3_000_000_000)
+            guard let self, !Task.isCancelled else { return }
+            self.writeKeychainBackup()
+        }
+    }
+
+    func writeKeychainBackup() {
+        guard settings.autoSave, let data = backupData(includeLocation: true) else { return }
+        let saved = KeychainBackup.save(data)
+        autoSaveOK = saved
+        if saved { lastAutoSave = Date() }
+    }
+
+    /// Called when the app goes to the background, so the very last change is never lost.
+    func saveBackupNow() {
+        autoSaveTask?.cancel()
+        writeKeychainBackup()
+    }
+
+    /// Restores from a saved file or a pasted code.
+    @discardableResult
+    func restoreBackup(data: Data) -> Bool {
+        var payload = data
+        if let text = String(data: data, encoding: .utf8)?.trimmingCharacters(in: .whitespacesAndNewlines),
+           text.hasPrefix("ISB1:"), let decoded = Data(base64Encoded: String(text.dropFirst(5))) {
+            payload = decoded
+        }
+        guard let backup = try? JSONDecoder().decode(BackupData.self, from: payload) else {
+            status = "That isn't an Island Studio backup"
+            return false
+        }
+        var restored = backup.settings
+        if restored.latitude == nil {
+            restored.latitude = settings.latitude
+            restored.longitude = settings.longitude
+        }
+        config = backup.config
+        settings = restored
+        savedPresets = backup.presets
+        status = "Backup restored"
+        Haptics.success()
+        return true
+    }
+}
+
+// MARK: - Small bubble mode
+
+extension IslandManager {
+    /// Turns "stay in the small bubble" on or off. `hours` of 0 means until you turn it off;
+    /// leave it nil to use the hours you picked in the app.
+    func setBubbleMode(_ on: Bool, hours: Int? = nil) {
+        var s = settings
+        let chosen = hours ?? s.bubbleHours
+        s.stayInBubble = on
+        s.bubbleUntil = (on && chosen > 0) ? Date().addingTimeInterval(Double(chosen) * 3600) : nil
+        settings = s
+        Haptics.tap()
+        if on {
+            status = chosen > 0 ? "Small bubble mode on for \(chosen) hour\(chosen == 1 ? "" : "s")" : "Small bubble mode on"
+        } else {
+            status = "Small bubble mode off"
+        }
+    }
+
+    func checkBubbleExpiry(now: Date) {
+        if let end = settings.bubbleUntil, now >= end { setBubbleMode(false) }
     }
 }

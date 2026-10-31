@@ -79,7 +79,7 @@ struct StudioView: View {
                     switch mode {
                     case .island: IslandSettings()
                     case .expanded: ExpandedSettings()
-                    case .lock: LockSettings()
+                    case .lock, .aod: LockSettings()
                     }
                 }
                 .padding(16)
@@ -120,6 +120,8 @@ struct IslandSettings: View {
         let snapshot = manager.previewState(at: Date())
         VStack(spacing: 16) {
             presetsCard
+            statusCard
+            bubbleCard
             colorsCard
             layoutCard(snapshot)
             textCard
@@ -176,16 +178,48 @@ struct IslandSettings: View {
         }
     }
 
+    private var bubbleCard: some View {
+        Card(title: "Small bubble mode", icon: "circle.dashed", tint: .pink,
+             footer: "Handy while a delivery or ride is on your island. Your island updates rarely so the other app takes the big spot and your minimal bubble shows. It turns itself off after the time you pick. In Shortcuts, the Set Small Bubble Mode action can turn it on for you when Uber Eats opens.") {
+            BubbleControls()
+        }
+    }
+
+    private var statusCard: some View {
+        Card(title: "Quick status", icon: "bubble.left.fill", tint: .green,
+             footer: manager.settings.activeStatus == nil
+                ? "Tap one to put it on your island. It sits on top of your preset until you clear it, and it can clear itself."
+                : "This is showing on your island right now. Clear it to go back to your preset.") {
+            ScrollView(.horizontal, showsIndicators: false) {
+                HStack(spacing: 8) {
+                    ForEach(manager.settings.statuses) { item in
+                        FilterChip(title: item.emoji + " " + item.text,
+                                   selected: manager.settings.activeStatus?.id == item.id) {
+                            manager.setStatus(item)
+                        }
+                    }
+                }
+            }
+            if manager.settings.activeStatus != nil {
+                WideButton(title: "Clear status", icon: "xmark.circle") {
+                    manager.setStatus(nil)
+                }
+            }
+            NavigationLink {
+                StatusSettingsView()
+            } label: {
+                NavRowLabel(title: "Edit statuses", icon: "pencil", color: .green)
+            }
+            .buttonStyle(.plain)
+        }
+    }
+
     private var colorsCard: some View {
         Card(title: "Colors", icon: "paintpalette.fill", tint: .orange,
              footer: "The accent colors the outline, glow, buttons, Lock Screen tint and every slot set to follow it. Pick where it comes from to make your whole island change color on its own.") {
-            ColorPicker(selection: manager.colorBinding(\.keylineHex)) {
-                HStack(spacing: 10) {
-                    IconBadge(systemName: "drop.fill", color: .orange)
-                    Text(manager.config.accentSync == .fixed ? "Accent color" : "Accent color (synced)")
-                }
-            }
-            .disabled(manager.config.accentSync != .fixed)
+            ColorField(title: manager.config.accentSync == .fixed ? "Accent color" : "Accent color (synced)",
+                       icon: "drop.fill", iconColor: .orange, hex: $manager.config.keylineHex)
+                .disabled(manager.config.accentSync != .fixed)
             RowDivider()
             HStack(spacing: 10) {
                 IconBadge(systemName: "arrow.triangle.2.circlepath", color: .teal)
@@ -201,6 +235,20 @@ struct IslandSettings: View {
             }
             RowDivider()
             ToggleRow(title: "All slots follow accent", icon: "link", color: .indigo, isOn: followBinding)
+            RowDivider()
+            Text("Harmony").font(.subheadline.weight(.medium))
+            ScrollView(.horizontal, showsIndicators: false) {
+                HStack(spacing: 8) {
+                    ForEach(HarmonyKind.allCases) { kind in
+                        PillButton(title: kind.label, icon: "circle.hexagongrid.fill") {
+                            manager.applyHarmony(kind)
+                        }
+                    }
+                }
+            }
+            Text("Recolors your slots with colors that go with your accent.")
+                .font(.caption)
+                .foregroundStyle(.secondary)
             RowDivider()
             Text("Palettes").font(.subheadline.weight(.medium))
             ScrollView(.horizontal, showsIndicators: false) {
@@ -265,6 +313,15 @@ struct IslandSettings: View {
                 SlotNavLabel(title: "Minimal bubble", slot: manager.config.minimal, state: snapshot)
             }
             .buttonStyle(.plain)
+            RowDivider()
+            HStack(spacing: 10) {
+                WideButton(title: "Left look → right", icon: "arrow.right") {
+                    manager.copySlotStyle(from: \.left, to: \.right)
+                }
+                WideButton(title: "Right look → left", icon: "arrow.left") {
+                    manager.copySlotStyle(from: \.right, to: \.left)
+                }
+            }
         }
     }
 
@@ -309,6 +366,14 @@ struct IslandSettings: View {
                 }
             }
             RowDivider()
+            menuRow("Clock format", icon: "clock", color: .teal) {
+                Picker("Clock format", selection: $manager.config.clockMode) {
+                    Text("Match iPhone").tag("auto")
+                    Text("12-hour").tag("12")
+                    Text("24-hour").tag("24")
+                }
+            }
+            RowDivider()
             VStack(alignment: .leading, spacing: 4) {
                 HStack {
                     Text("Letter spacing")
@@ -317,6 +382,9 @@ struct IslandSettings: View {
                 }
                 Slider(value: $manager.config.tracking, in: -1...4, step: 0.5)
             }
+            RowDivider()
+            ToggleRow(title: "Outline ring on minimal bubble", icon: "circle.dashed", color: .cyan,
+                      isOn: $manager.config.minimalRing)
             RowDivider()
             ToggleRow(title: "Neon glow", icon: "sparkle", color: .pink, isOn: $manager.config.glow)
             if manager.config.glow {
@@ -459,7 +527,7 @@ struct ExpandedSettings: View {
                 ToggleRow(title: "Custom title color", icon: "paintbrush.fill", color: .pink,
                           isOn: manager.customColorToggle(\.expandedTitleHex))
                 if !manager.config.expandedTitleHex.isEmpty {
-                    ColorPicker("Title color", selection: manager.colorBinding(\.expandedTitleHex))
+                    ColorField(title: "Title color", hex: $manager.config.expandedTitleHex)
                 }
                 Text("Title icon").font(.subheadline.weight(.medium))
                 IconStrip(symbol: $manager.config.expandedIcon)
@@ -488,6 +556,15 @@ struct ExpandedSettings: View {
                 }
             }
 
+            Card(title: "Reactions", icon: "face.smiling", tint: .pink,
+                 footer: "Long-press the island and tap an emoji to pop it out. Handy for showing someone your phone, or just for fun.") {
+                ToggleRow(title: "Emoji reaction row", icon: "face.smiling", color: .pink,
+                          isOn: $manager.settings.showReactions)
+                if manager.settings.showReactions {
+                    ReactionEditor()
+                }
+            }
+
             Card(title: "Extras", icon: "square.stack.3d.up.fill", tint: .teal,
                  footer: "Info chips and the progress bar are shared with the Lock Screen. Pick up to four chips so they fit.") {
                 ToggleRow(title: "Counter + / − row", icon: "plus.circle.fill", color: .blue,
@@ -497,6 +574,13 @@ struct ExpandedSettings: View {
                           isOn: $manager.config.expandedChips)
                 if manager.config.expandedChips {
                     ChipPicker(kinds: $manager.config.chipKinds)
+                    NavigationLink {
+                        ChipOrderView(kinds: $manager.config.chipKinds)
+                    } label: {
+                        NavRowLabel(title: "Reorder chips", icon: "arrow.up.arrow.down", color: .teal,
+                                    value: "\(manager.config.chipKinds.count) showing")
+                    }
+                    .buttonStyle(.plain)
                 }
                 RowDivider()
                 ToggleRow(title: "Progress bar", icon: "minus.rectangle.fill", color: .orange,
@@ -545,17 +629,22 @@ struct LockSettings: View {
     var body: some View {
         VStack(spacing: 16) {
             Card(title: "Layout", icon: "rectangle.grid.1x2.fill", tint: .blue,
-                 footer: "Compact is one slim row and skips chips and the progress bar.") {
+                 footer: "Compact is one slim row and skips chips and the progress bar. Big clock makes the time the star.") {
                 Picker("Layout", selection: $manager.config.lockLayout) {
                     ForEach(LockLayout.allCases) { layout in
                         Text(layout.label).tag(layout)
                     }
                 }
                 .pickerStyle(.segmented)
+                Picker("Text alignment", selection: $manager.config.lockAlign) {
+                    Text("Left").tag("leading")
+                    Text("Center").tag("center")
+                }
+                .pickerStyle(.segmented)
             }
 
             Card(title: "Background", icon: "circle.lefthalf.filled", tint: .purple,
-                 footer: "Tinted and Gradient use your accent color. Glass lets your wallpaper show through. Custom is your own two-color gradient.") {
+                 footer: "Tinted and Gradient use your accent color. Glass lets your wallpaper show through. Custom is your own two-color gradient. Aurora slowly drifts through colors on its own.") {
                 ScrollView(.horizontal, showsIndicators: false) {
                     HStack(spacing: 8) {
                         ForEach(LockStyle.allCases) { style in
@@ -566,8 +655,8 @@ struct LockSettings: View {
                     }
                 }
                 if manager.config.lockStyle == .custom {
-                    ColorPicker("Top color", selection: manager.colorBinding(\.lockBgHex))
-                    ColorPicker("Bottom color", selection: manager.colorBinding(\.lockBg2Hex))
+                    ColorField(title: "Top color", hex: $manager.config.lockBgHex)
+                    ColorField(title: "Bottom color", hex: $manager.config.lockBg2Hex)
                 }
             }
 
@@ -597,10 +686,20 @@ struct LockSettings: View {
                 ToggleRow(title: "Custom title color", icon: "paintbrush.fill", color: .pink,
                           isOn: manager.customColorToggle(\.lockTitleHex))
                 if !manager.config.lockTitleHex.isEmpty {
-                    ColorPicker("Title color", selection: manager.colorBinding(\.lockTitleHex))
+                    ColorField(title: "Title color", hex: $manager.config.lockTitleHex)
                 }
                 Text("Title icon").font(.subheadline.weight(.medium))
                 IconStrip(symbol: $manager.config.lockIcon)
+            }
+
+            Card(title: "Mini graph", icon: "chart.xyaxis.line", tint: .green,
+                 footer: "A tiny chart of your battery over the last 12 hours, or your steps today. It fills in as the app collects readings, so give it a few minutes.") {
+                Picker("Graph", selection: $manager.config.graphKind) {
+                    Text("Off").tag("")
+                    Text("Battery").tag("battery")
+                    Text("Steps").tag("steps")
+                }
+                .pickerStyle(.segmented)
             }
 
             Card(title: "Extras", icon: "sparkles", tint: .teal,
@@ -609,6 +708,13 @@ struct LockSettings: View {
                           isOn: $manager.config.lockChips)
                 if manager.config.lockChips {
                     ChipPicker(kinds: $manager.config.chipKinds)
+                    NavigationLink {
+                        ChipOrderView(kinds: $manager.config.chipKinds)
+                    } label: {
+                        NavRowLabel(title: "Reorder chips", icon: "arrow.up.arrow.down", color: .teal,
+                                    value: "\(manager.config.chipKinds.count) showing")
+                    }
+                    .buttonStyle(.plain)
                 }
                 RowDivider()
                 ToggleRow(title: "Progress bar", icon: "minus.rectangle.fill", color: .orange,
