@@ -107,14 +107,29 @@ struct DaysIntent: WidgetConfigurationIntent {
     static var title: LocalizedStringResource = "Days counter"
     static var description: IntentDescription = IntentDescription("Count the days since a date.")
 
-    @Parameter(title: "Since", default: Date(timeIntervalSince1970: 1_704_067_200))
-    var since: Date
+    // Date parameters with a default only exist on iOS 18, so the date is three simple number fields.
+    @Parameter(title: "Year", default: 2024)
+    var year: Int
+
+    @Parameter(title: "Month (1-12)", default: 1)
+    var month: Int
+
+    @Parameter(title: "Day (1-31)", default: 1)
+    var day: Int
 
     @Parameter(title: "Emoji", default: "💜")
     var emoji: String
 
     @Parameter(title: "Look", default: .neon)
     var look: WidgetLook
+
+    var since: Date {
+        var parts = DateComponents()
+        parts.year = min(max(year, 1970), 2100)
+        parts.month = min(max(month, 1), 12)
+        parts.day = min(max(day, 1), 31)
+        return Calendar.current.date(from: parts) ?? Date()
+    }
 }
 
 struct DaysEntry: TimelineEntry {

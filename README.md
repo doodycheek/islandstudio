@@ -2,6 +2,9 @@
 
 Customizes the Dynamic Island with a Live Activity, plus a background keep-alive so animations keep running.
 
+## v1.6.5
+- Fixed the build: the Days widget now takes year, month and day numbers (the date picker needs iOS 18)
+
 ## v1.6.4
 - Small bubble mode turns itself off after a set time, has a card in Studio, and a Shortcuts action to switch it on automatically
 
